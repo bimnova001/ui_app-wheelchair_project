@@ -1,15 +1,30 @@
+import subprocess
+import sys
 import customtkinter as ctk
-from tkinter import messagebox  # เพิ่ม import นี้
+from tkinter import messagebox
 
 class MenuPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
 
+        # กำหนด function/checkbox ที่ต้องการจัดการและแสดง status
+        self.func_list = [
+            {"name": "Connect", "cmd": ["python", "--version"]},
+            {"name": "Settings", "cmd": ["echo", "settings ok"] if sys.platform != "win32" else ["cmd", "/c", "echo settings ok"]},
+            {"name": "Shutdown", "cmd": ["ping", "127.0.0.1", "-n", "1"] if sys.platform == "win32" else ["ping", "-c", "1", "127.0.0.1"]},
+        ]
+        self.checkbox_list = [
+            {"name": "Enable notifications"},
+            {"name": "Auto-connect"},
+            {"name": "Show battery"},
+        ]
+
         # Layout หลัก
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(2, weight=0)
 
         # Sidebar
         config_sidebar = ctk.CTkFrame(self, width=200, fg_color="#18191c")
@@ -20,43 +35,44 @@ class MenuPage(ctk.CTkFrame):
             config_sidebar, text="Config",
             font=ctk.CTkFont(size=20, weight="bold")
         ).pack(pady=(20, 10))
-        ctk.CTkButton(config_sidebar, text="Connect", fg_color="#b71c1c",
-                      command=lambda: messagebox.showinfo("Connect", "Connect clicked")).pack(pady=10, fill="x", padx=20)
-        ctk.CTkButton(config_sidebar, text="Settings", fg_color="#b71c1c",
-                      command=lambda: messagebox.showinfo("Settings", "Settings clicked")).pack(pady=10, fill="x", padx=20)
-        ctk.CTkButton(config_sidebar, text="Shutdown", fg_color="#b71c1c",
-                      command=lambda: messagebox.showinfo("Shutdown", "Shutdown clicked")).pack(pady=10, fill="x", padx=20)
+
+        # ปุ่มฟังก์ชัน
+        for func in self.func_list:
+            ctk.CTkButton(
+                config_sidebar, text=func["name"], fg_color="#b71c1c",
+                command=lambda f=func: self.on_func_click(f)
+            ).pack(pady=10, fill="x", padx=20)
+
         ctk.CTkLabel(config_sidebar, text="Options:", anchor="w").pack(pady=(30, 0), padx=20, anchor="w")
 
-        # เพิ่ม callback ให้กับ CheckBox
-        
-        self.cb_notify = ctk.CTkCheckBox(
-            config_sidebar, text="Enable notifications",
-            command=lambda: messagebox.showinfo("Checkbox", f"Enable notifications: {self.cb_notify.get()}")
-        )
-        self.cb_notify.pack(anchor="w", padx=30, pady=2)
-        self.cb_notify.select(1) #เรา่งเลือกค่าเริ่มต้นเป็น True
+        # Checkbox พร้อม status
+        self.checkbox_vars = {}
+        self.checkbox_status = {}
+        for cb in self.checkbox_list:
+            var = ctk.IntVar(value=1 if cb["name"] == "Enable notifications" else 0)
+            frame = ctk.CTkFrame(config_sidebar, fg_color="transparent")
+            frame.pack(anchor="w", padx=20, pady=2, fill="x")
+            cb_widget = ctk.CTkCheckBox(
+                frame, text=cb["name"], variable=var,
+                command=lambda name=cb["name"]: self.on_checkbox_toggle(name)
+            )
+            cb_widget.pack(side="left", anchor="w")
+            status = ctk.CTkLabel(frame, text="●")
+            status.pack(side="right", padx=5)
+            self.checkbox_vars[cb["name"]] = var
+            self.checkbox_status[cb["name"]] = status
 
-        self.cb_auto = ctk.CTkCheckBox(
-            config_sidebar, text="Auto-connect",
-            command=lambda: messagebox.showinfo("Checkbox", f"Auto-connect: {self.cb_auto.get()}")
-        )
-        self.cb_auto.pack(anchor="w", padx=30, pady=2)
 
-        self.cb_battery = ctk.CTkCheckBox(
-            config_sidebar, text="Show battery",
-            command=lambda: messagebox.showinfo("Checkbox", f"Show battery: {self.cb_battery.get()}")
-        )
-        self.cb_battery.pack(anchor="w", padx=30, pady=2)
+        ctk.CTkButton(config_sidebar, text="App Config",
+                      fg_color="#444", command=lambda: controller.show_frame("AppConfigPage")).pack(pady=10, fill="x", padx=20)
 
-        # Main Content
+        # Main Content (เหมือนเดิม)
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.grid(row=0, column=1, sticky="nsew", padx=0, pady=0)
         main.grid_rowconfigure(2, weight=1)
         main.grid_rowconfigure(3, weight=2)
         main.grid_columnconfigure(0, weight=1)
 
-        # Mode Selector
         ctk.CTkLabel(
             main, text="Mode & configuration",
             font=ctk.CTkFont(size=18, weight="bold")
@@ -68,7 +84,6 @@ class MenuPage(ctk.CTkFrame):
         )
         self.menu.grid(row=1, column=0, pady=(0, 20), ipadx=10, ipady=10, sticky="ew")
 
-        # Map Points Box
         content_box = ctk.CTkFrame(main, fg_color="#232323", corner_radius=12)
         content_box.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
         content_box.grid_rowconfigure(1, weight=1)
@@ -83,7 +98,6 @@ class MenuPage(ctk.CTkFrame):
         self.points_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
         self.update_points_list()
 
-        # Log/Information (ล่าง)
         log_frame = ctk.CTkFrame(main, fg_color="#18191c", corner_radius=12)
         log_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(10, 0))
         log_frame.grid_rowconfigure(1, weight=1)
@@ -99,6 +113,43 @@ class MenuPage(ctk.CTkFrame):
         textbox.insert("end", "ข้อความนี้สามารถเลื่อนขึ้นลงได้\n")
 
         self.bind("<Visibility>", lambda e: self.update_points_list())
+
+        # Status Panel (ขวาสุด)
+        status_panel = ctk.CTkFrame(self, width=180, fg_color="#232323")
+        status_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 10), pady=10)
+        status_panel.grid_propagate(False)
+
+        ctk.CTkLabel(status_panel, text="Status", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 10))
+
+        # Status สำหรับฟังก์ชัน
+        self.status_funcs = {}
+        for func in self.func_list:
+            frame = ctk.CTkFrame(status_panel, fg_color="transparent")
+            frame.pack(fill="x", pady=5, padx=10)
+            label = ctk.CTkLabel(frame, text=func["name"], font=ctk.CTkFont(size=14), anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+            status = ctk.CTkLabel(frame, text="●", font=ctk.CTkFont(size=16), text_color="#44ff44")
+            status.pack(side="right")
+            self.status_funcs[func["name"]] = status
+
+        # Status สำหรับ checkbox
+        ctk.CTkLabel(status_panel, text="Options", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(20, 0))
+        self.status_checkbox = {}
+        for cb in self.checkbox_list:
+            frame = ctk.CTkFrame(status_panel, fg_color="transparent")
+            frame.pack(fill="x", pady=2, padx=10)
+            label = ctk.CTkLabel(frame, text=cb["name"], font=ctk.CTkFont(size=12), anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+            status = ctk.CTkLabel(frame, text="●", font=ctk.CTkFont(size=14),
+                                  text_color="#44ff44" if self.checkbox_vars[cb["name"]].get() else "#ff4444")
+            status.pack(side="right")
+            self.status_checkbox[cb["name"]] = status
+
+        # ตั้งค่าเริ่มต้น
+        for func in self.func_list:
+            self.set_func_status(func["name"], True)
+        for cb in self.checkbox_list:
+            self.set_checkbox_status(cb["name"], self.checkbox_vars[cb["name"]].get())
 
     def update_points_list(self):
         for widget in self.points_frame.winfo_children():
@@ -128,3 +179,49 @@ class MenuPage(ctk.CTkFrame):
             self.controller.show_frame("AIPage")
         elif value == "SLAM Map":
             self.controller.show_frame("MapPage")
+
+    def set_func_status(self, func, ok=True):
+        if func in self.status_funcs:
+            color = "#44ff44" if ok else "#ff4444"
+            self.status_funcs[func].configure(text_color=color)
+
+    def set_checkbox_status(self, name, ok=True):
+        if name in self.status_checkbox:
+            color = "#44ff44" if ok else "#ff4444"
+            self.status_checkbox[name].configure(text_color=color)
+    
+    def call_func_by_name(self, func_name):
+        # ค้นหา dict ใน self.func_list ที่ name ตรงกับ func_name
+        func = next((f for f in self.func_list if f["name"] == func_name), None)
+        if func:
+            self.on_func_click(func)
+        else:
+            messagebox.showerror("Error", f"Function '{func_name}' not found")
+
+    def on_func_click(self, func):
+        # func เป็น dict
+        try:
+            result = subprocess.run(func["cmd"], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                self.set_func_status(func["name"], True)
+                messagebox.showinfo(func["name"], f"{func['name']} success:\n{result.stdout.strip()}")
+            else:
+                self.set_func_status(func["name"], False)
+                messagebox.showerror(func["name"], f"{func['name']} error:\n{result.stderr.strip()}")
+        except Exception as e:
+            self.set_func_status(func["name"], False)
+            messagebox.showerror(func["name"], f"{func['name']} error!\n{e}")
+
+    def on_checkbox_toggle(self, name):
+        # อัปเดตสถานะ checkbox
+        value = self.checkbox_vars[name].get()
+        self.set_checkbox_status(name, value)
+
+        # แสดงข้อความทดสอบ
+        messagebox.showinfo("Checkbox Toggled", f"{name}: {'Enabled' if value else 'Disabled'}")
+        
+
+        # เพิ่มส่วนนี้
+        if name == "Enable notifications" and value == 0:
+            self.call_func_by_name("Connect")
+

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Robot Control System - Documentation</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body {
+            background: linear-gradient(135deg, #18191c 0%, #232323 100%);
+            color: #f2f2f2;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        header {
+            background: #b71c1c;
+            padding: 32px 0 24px 0;
+            text-align: center;
+            box-shadow: 0 4px 16px #0008;
+            animation: fadeInDown 1s;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2.8rem;
+            letter-spacing: 2px;
+            font-weight: 700;
+            color: #fff;
+            text-shadow: 0 2px 8px #0007;
+        }
+        nav {
+            background: #232323;
+            padding: 10px 0;
+            text-align: center;
+            box-shadow: 0 2px 8px #0005;
+            animation: fadeInDown 1.2s;
+        }
+        nav a {
+            color: #ff5252;
+            text-decoration: none;
+            margin: 0 18px;
+            font-weight: 500;
+            font-size: 1.1rem;
+            transition: color 0.2s;
+            position: relative;
+        }
+        nav a:after {
+            content: '';
+            display: block;
+            width: 0;
+            height: 2px;
+            background: #ff5252;
+            transition: width .3s;
+            position: absolute;
+            left: 0; bottom: -4px;
+        }
+        nav a:hover {
+            color: #fff;
+        }
+        nav a:hover:after {
+            width: 100%;
+        }
+        .container {
+            max-width: 900px;
+            margin: 40px auto 0 auto;
+            background: #232323e6;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px #0007;
+            padding: 36px 32px 32px 32px;
+            animation: fadeInUp 1.2s;
+        }
+        h2 {
+            color: #ff5252;
+            margin-top: 32px;
+            font-size: 2rem;
+            border-left: 6px solid #b71c1c;
+            padding-left: 12px;
+            animation: fadeInLeft 1.2s;
+        }
+        h3 {
+            color: #fff;
+            margin-top: 24px;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 18px;
+        }
+        code, pre {
+            background: #18191c;
+            color: #ffbaba;
+            border-radius: 6px;
+            padding: 2px 6px;
+            font-size: 1rem;
+        }
+        pre {
+            display: block;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 12px 0 24px 0;
+        }
+        .func-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin: 24px 0;
+        }
+        .func-card {
+            background: #18191c;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0006;
+            padding: 18px 22px;
+            min-width: 220px;
+            flex: 1 1 220px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            animation: fadeInUp 1.2s;
+        }
+        .func-card:hover {
+            transform: translateY(-6px) scale(1.03);
+            box-shadow: 0 8px 24px #b71c1c55;
+        }
+        .func-card .status-dot {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            margin-right: 8px;
+            vertical-align: middle;
+            box-shadow: 0 0 8px #44ff44aa;
+            background: linear-gradient(135deg, #44ff44 60%, #1bff1b 100%);
+            animation: statusPulse 1.2s infinite alternate;
+        }
+        .func-card .status-dot.red {
+            background: linear-gradient(135deg, #ff4444 60%, #b71c1c 100%);
+            box-shadow: 0 0 8px #ff4444aa;
+            animation: statusPulseRed 1.2s infinite alternate;
+        }
+        .func-card .func-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #fff;
+        }
+        .func-card .desc {
+            color: #ccc;
+            margin-top: 8px;
+            font-size: 0.98rem;
+        }
+        .func-card .cmd {
+            color: #ffbaba;
+            font-size: 0.95rem;
+            margin-top: 8px;
+        }
+        .checkbox-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin: 24px 0;
+        }
+        .checkbox-card {
+            background: #18191c;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px #0006;
+            padding: 14px 20px;
+            min-width: 180px;
+            flex: 1 1 180px;
+            position: relative;
+            animation: fadeInUp 1.3s;
+        }
+        .checkbox-card .status-dot {
+            width: 12px;
+            height: 12px;
+            margin-right: 7px;
+        }
+        .checkbox-card .cb-name {
+            font-size: 1rem;
+            font-weight: 500;
+            color: #fff;
+        }
+        .checkbox-card .cb-desc {
+            color: #bbb;
+            margin-top: 6px;
+            font-size: 0.95rem;
+        }
+        .example {
+            background: #1a1a1a;
+            border-left: 5px solid #b71c1c;
+            padding: 12px 18px;
+            margin: 18px 0;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1.05rem;
+            animation: fadeInLeft 1.3s;
+        }
+        @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-40px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(40px);}
+            to { opacity: 1; transform: translateY(0);}
+        }
+        @keyframes fadeInLeft {
+            from { opacity: 0; transform: translateX(-40px);}
+            to { opacity: 1; transform: translateX(0);}
+        }
+        @keyframes statusPulse {
+            from { box-shadow: 0 0 8px #44ff44aa; }
+            to { box-shadow: 0 0 18px #44ff44cc; }
+        }
+        @keyframes statusPulseRed {
+            from { box-shadow: 0 0 8px #ff4444aa; }
+            to { box-shadow: 0 0 18px #ff4444cc; }
+        }
+        @media (max-width: 700px) {
+            .container { padding: 18px 4vw; }
+            .func-list, .checkbox-list { flex-direction: column; }
+        }
+    </style>
+    <script>
+        // Animation for scroll
+        document.addEventListener("DOMContentLoaded", function() {
+            let cards = document.querySelectorAll('.func-card, .checkbox-card');
+            function animateCards() {
+                cards.forEach(card => {
+                    let rect = card.getBoundingClientRect();
+                    if(rect.top < window.innerHeight - 40) {
+                        card.style.opacity = 1;
+                        card.style.transform = "none";
+                    }
+                });
+            }
+            animateCards();
+            window.addEventListener('scroll', animateCards);
+        });
+    </script>
+</head>
+<body>
+    <header>
+        <h1>Robot Control System<br>Documentation</h1>
+    </header>
+    <nav>
+        <a href="#overview">Overview</a>
+        <a href="#function">Function Status</a>
+        <a href="#checkbox">Checkbox Status</a>
+        <a href="#usage">Usage Example</a>
+        <a href="#extend">How to Extend</a>
+    </nav>
+    <div class="container">
+        <h2 id="overview">Overview</h2>
+        <div class="example">
+            ระบบควบคุมหุ่นยนต์นี้สร้างด้วย <b>Python + CustomTkinter</b> รองรับการขยายฟังก์ชันและสถานะได้ง่าย<br>
+            <b>Sidebar</b> สำหรับปุ่มฟังก์ชันและตัวเลือก, <b>Status Panel</b> แสดงสถานะการทำงานแบบ real-time<br>
+            <b>รองรับการเพิ่มฟังก์ชัน/checkbox ใหม่ได้ทันที</b> เพียงเพิ่มใน list ในโค้ด
+        </div>
+
+        <h2 id="function">Function Status ( ตัวอย่างการใช้งาน )</h2>
+        <div class="func-list">
+            <div class="func-card">
+                <span class="status-dot"></span>
+                <span class="func-name">Connect</span>
+                <div class="desc">ตรวจสอบ Python ในระบบ</div>
+                <div class="cmd"><b>CMD:</b> python --version</div>
+            </div>
+            <div class="func-card">
+                <span class="status-dot"></span>
+                <span class="func-name">Settings</span>
+                <div class="desc">ทดสอบคำสั่ง echo (หรือ cmd echo บน Windows)</div>
+                <div class="cmd"><b>CMD:</b> echo settings ok</div>
+            </div>
+            <div class="func-card">
+                <span class="status-dot red"></span>
+                <span class="func-name">Shutdown</span>
+                <div class="desc">Ping localhost 1 ครั้ง</div>
+                <div class="cmd"><b>CMD:</b> ping 127.0.0.1 -n 1</div>
+            </div>
+        </div>
+        <div class="example">
+            <b>สถานะไฟเขียว</b> = ทำงานได้ปกติ<br>
+            <b>สถานะไฟแดง</b> = มี error หรือไม่ตอบสนอง
+        </div>
+
+        <h2 id="checkbox">Checkbox Status ( ตัวอย่างการใช้งาน ) </h2>
+        <div class="checkbox-list">
+            <div class="checkbox-card">
+                <span class="status-dot"></span>
+                <span class="cb-name">Enable notifications</span>
+                <div class="cb-desc">เปิด/ปิดการแจ้งเตือน</div>
+            </div>
+            <div class="checkbox-card">
+                <span class="status-dot red"></span>
+                <span class="cb-name">Auto-connect</span>
+                <div class="cb-desc">เชื่อมต่ออัตโนมัติเมื่อเริ่มต้น</div>
+            </div>
+            <div class="checkbox-card">
+                <span class="status-dot"></span>
+                <span class="cb-name">Show battery</span>
+                <div class="cb-desc">แสดงสถานะแบตเตอรี่</div>
+            </div>
+        </div>
+        <div class="example">
+            <b>สถานะ checkbox</b> จะเปลี่ยนสีตามค่าปัจจุบัน (ติ๊กถูก = เขียว, ไม่ติ๊ก = แดง)
+        </div>
+
+        <h2 id="usage">Usage Example ( ตัวอย่างการใช้งานใน )</h2>
+        <h3>เพิ่ม/แก้ไขฟังก์ชัน</h3>
+        <pre>
+self.func_list = [
+    {"name": "Connect", "cmd": ["python", "--version"]},
+    {"name": "Settings", "cmd": ["echo", "settings ok"]},
+    {"name": "Shutdown", "cmd": ["ping", "127.0.0.1", "-n", "1"]},
+    # เพิ่มฟังก์ชันใหม่ได้ที่นี่
+]
+        </pre>
+        <h3>เพิ่ม/แก้ไข Checkbox</h3>
+        <pre>
+self.checkbox_list = [
+    {"name": "Enable notifications"},
+    {"name": "Auto-connect"},
+    {"name": "Show battery"},
+    # เพิ่ม checkbox ใหม่ได้ที่นี่
+]
+        </pre>
+        <h3>เรียกใช้ฟังก์ชันจากชื่อ</h3>
+        <pre>
+def call_func_by_name(self, func_name):
+    func = next((f for f in self.func_list if f["name"] == func_name), None)
+    if func:
+        self.on_func_click(func)
+        # หรือจะใช้ self.set_func_status(func_name, True/False) ก็ได้
+</pre>
+        <h3>ตัวอย่างการใช้งานใน Checkbox</h3>
+        <pre>
+def on_checkbox_toggle(self, name):
+    value = self.checkbox_vars[name].get()
+    self.set_checkbox_status(name, value)
+    if name == "Enable notifications" and value == 0:
+        self.call_func_by_name("Connect")
+</pre>
+
+        <h2 id="extend">How to Extend ( ตัวอย่างการใช้งานใน )</h2>
+        <ul>
+            <li>เพิ่มฟังก์ชันใหม่ใน <code>self.func_list</code> ได้ทันที (กำหนดชื่อและคำสั่ง subprocess)</li>
+            <li>เพิ่ม checkbox ใหม่ใน <code>self.checkbox_list</code> ได้ทันที</li>
+            <li>สถานะของแต่ละฟังก์ชันและ checkbox จะอัปเดตอัตโนมัติ</li>
+            <li>สามารถนำ logic ใน <code>on_func_click</code> และ <code>on_checkbox_toggle</code> ไปต่อยอดกับ hardware หรือ API จริงได้</li>
+        </ul>
+        <div class="example">
+            <b>Tip:</b> 
+        </div>
+    </div>
+</body>
+</html>
