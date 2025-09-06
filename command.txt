@@ -1,0 +1,16 @@
+ros2 launch slam_toolbox online_async_launch.py
+จะได้ map real-time และ topic /map
+ถ้า map .pgm ยังไม่มี ให้ SLAM บันทึกหรือ save ด้วย service (option: map_saver_cli)
+
+
+เปิด Terminal B – รัน Navigation2 (Nav2 bringup)
+ros2 launch nav2_bringup bringup_launch.py map:=/home/user/assets/map.yaml
+โหลด map ที่มีอยู่ (ถ้ามี)
+จะมี topic/action หลัก:
+/cmd_vel → Motor command
+/navigate_to_pose → Navigation2 action
+/goal_pose → สามารถส่ง goal จาก GUI
+
+รัน ROS2 bridge node สำหรับ Navigation
+Terminal C:
+python3 navigate_to_named_goal.py

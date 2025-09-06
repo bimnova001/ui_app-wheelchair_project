@@ -10,15 +10,24 @@ class MenuPage(ctk.CTkFrame):
 
         # กำหนด function/checkbox ที่ต้องการจัดการและแสดง status
         self.func_list = [
-            {"name": "Connect", "cmd": ["python", "--version"]},
-            {"name": "Settings", "cmd": ["echo", "settings ok"] if sys.platform != "win32" else ["cmd", "/c", "echo settings ok"]},
-            {"name": "Shutdown", "cmd": ["ping", "127.0.0.1", "-n", "1"] if sys.platform == "win32" else ["ping", "-c", "1", "127.0.0.1"]},
+            {"name": "Check ros2", "cmd": ["python", "--version"]},
+            {"name": "Save Map","cmd": ["ros2", "run", "nav2_map_server", "map_saver_cli", "-f", "/home/user/assets/map"]}
         ]
         self.checkbox_list = [
-            {"name": "Enable notifications"},
-            {"name": "Auto-connect"},
+            {"name": "Auto mode"},
+            {"name": "Manual mode"},
             {"name": "Show battery"},
         ]
+        
+        self.func_list_start = [
+            {"name": "Start LiDAR A2", "cmd": ["ros2", "launch", "rplidar_ros", "rplidar.launch.py",
+                                                "serial_port:=/dev/ttyUSB0",
+                                                "frame_id:=laser_frame"]},
+            {"name": "Start SLAM", "cmd": ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]},
+            {"name": "Start Navigation", "cmd": ["ros2", "launch", "nav2_bringup", "bringup_launch.py",
+                                                "map:=/home/user/assets/map.yaml"]},
+        ]
+
 
         # Layout หลัก
         self.grid_rowconfigure(0, weight=1)
@@ -49,7 +58,7 @@ class MenuPage(ctk.CTkFrame):
         self.checkbox_vars = {}
         self.checkbox_status = {}
         for cb in self.checkbox_list:
-            var = ctk.IntVar(value=1 if cb["name"] == "Enable notifications" else 0)
+            var = ctk.IntVar(value=1 if cb["name"] == "Auto mode" else 0)
             frame = ctk.CTkFrame(config_sidebar, fg_color="transparent")
             frame.pack(anchor="w", padx=20, pady=2, fill="x")
             cb_widget = ctk.CTkCheckBox(
@@ -144,12 +153,32 @@ class MenuPage(ctk.CTkFrame):
                                   text_color="#44ff44" if self.checkbox_vars[cb["name"]].get() else "#ff4444")
             status.pack(side="right")
             self.status_checkbox[cb["name"]] = status
+            
+            
+        ctk.CTkLabel(status_panel, text="Startup Nodes", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=(20, 0))
+        self.status_start_funcs = {}
+        for func in self.func_list_start:
+            frame = ctk.CTkFrame(status_panel, fg_color="transparent")
+            frame.pack(fill="x", pady=2, padx=10)
+            label = ctk.CTkLabel(frame, text=func["name"], font=ctk.CTkFont(size=12), anchor="w")
+            label.pack(side="left", fill="x", expand=True)
+            status = ctk.CTkLabel(frame, text="●", font=ctk.CTkFont(size=14), text_color="#ffcc00")
+            status.pack(side="right")
+            self.status_start_funcs[func["name"]] = status
+
 
         # ตั้งค่าเริ่มต้น
         for func in self.func_list:
             self.set_func_status(func["name"], True)
         for cb in self.checkbox_list:
             self.set_checkbox_status(cb["name"], self.checkbox_vars[cb["name"]].get())
+            
+            self.after(100, self.auto_run_commands)
+
+    def auto_run_commands(self):
+        for func in self.func_list_start:
+            self.on_func_click(func)
+            
 
     def update_points_list(self):
         for widget in self.points_frame.winfo_children():
@@ -189,6 +218,12 @@ class MenuPage(ctk.CTkFrame):
         if name in self.status_checkbox:
             color = "#44ff44" if ok else "#ff4444"
             self.status_checkbox[name].configure(text_color=color)
+            
+    def set_start_func_status(self, func, ok=True):
+        if func in self.status_start_funcs:
+            color = "#44ff44" if ok else "#ff4444"
+            self.status_start_funcs[func].configure(text_color=color)
+
     
     def call_func_by_name(self, func_name):
         # ค้นหา dict ใน self.func_list ที่ name ตรงกับ func_name
@@ -199,18 +234,31 @@ class MenuPage(ctk.CTkFrame):
             messagebox.showerror("Error", f"Function '{func_name}' not found")
 
     def on_func_click(self, func):
-        # func เป็น dict
         try:
             result = subprocess.run(func["cmd"], capture_output=True, text=True, timeout=5)
             if result.returncode == 0:
-                self.set_func_status(func["name"], True)
+                # อัปเดตสถานะ
+                if func["name"] in self.status_funcs:
+                    self.set_func_status(func["name"], True)
+                elif func["name"] in self.status_start_funcs:
+                    self.set_start_func_status(func["name"], True)
+
                 messagebox.showinfo(func["name"], f"{func['name']} success:\n{result.stdout.strip()}")
             else:
-                self.set_func_status(func["name"], False)
+                if func["name"] in self.status_funcs:
+                    self.set_func_status(func["name"], False)
+                elif func["name"] in self.status_start_funcs:
+                    self.set_start_func_status(func["name"], False)
+
                 messagebox.showerror(func["name"], f"{func['name']} error:\n{result.stderr.strip()}")
         except Exception as e:
-            self.set_func_status(func["name"], False)
+            if func["name"] in self.status_funcs:
+                self.set_func_status(func["name"], False)
+            elif func["name"] in self.status_start_funcs:
+                self.set_start_func_status(func["name"], False)
+
             messagebox.showerror(func["name"], f"{func['name']} error!\n{e}")
+
 
     def on_checkbox_toggle(self, name):
         # อัปเดตสถานะ checkbox
@@ -222,6 +270,6 @@ class MenuPage(ctk.CTkFrame):
         
 
         # เพิ่มส่วนนี้
-        if name == "Enable notifications" and value == 0:
+        if name == "Auto mode" and value == 0:
             self.call_func_by_name("Connect")
 
