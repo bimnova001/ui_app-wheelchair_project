@@ -91,7 +91,7 @@ python main.py
 - **🐛 [Report Issues](https://LOCAL///issues)**: Submit bugs found or log feature requests for the `` project.
 - **💡 [Submit Pull Requests](https://LOCAL///blob/main/CONTRIBUTING.md)**: Review open PRs, and submit your own PRs.
 
-<details closed>
+
 ---
 
 ## License
@@ -102,7 +102,11 @@ python main.py
 
 ## Acknowledgments
 
-- Credit `contributors`, `inspiration`, `references`, etc.
+| Resource | Description |
+|----------|-------------|
+| [Ros2 Jazzy ](https://docs.ros.org/en/jazzy/index.html) | คู่มือใช้งาน ros2 Jazzy |
+| [ TurtleBot ](https://emanual.robotis.com/docs/en/platform/turtlebot3/overview/#overview) | คู่มือใช้งาน TurtleBot |
+| [TensorFlow Docs](https://www.tensorflow.org/api_docs) | เอกสารอธิบาย API ของ TensorFlow |
 
 <div align="right">
 
