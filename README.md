@@ -26,7 +26,6 @@
 - [Table of Contents](#table-of-contents)
 - [Features](#features)
 - [Contributing](#contributing)
-- [License](#license)
 - [Acknowledgments](#acknowledgments)
 
 </details>
@@ -90,12 +89,6 @@ python main.py
 
 - **💬 wait...
 
-
----
-
-## License
-
- is protected under the [LICENSE](https://choosealicense.com/licenses) License. For more details, refer to the [LICENSE](https://choosealicense.com/licenses/) file.
 
 ---
 
