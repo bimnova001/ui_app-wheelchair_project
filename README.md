@@ -1,7 +1,7 @@
 <div id="top">
 
 <!-- HEADER STYLE: COMPACT -->
-<img src="logo/cisat-remove.ico" width="30%" align="left" style="margin-right: 15px">
+<img src="logo/electric-wheelchair.png" width="30%" align="left" style="margin-right: 15px">
 
 # <code>❯ Wheelchair-project</code>
 <em></em>
