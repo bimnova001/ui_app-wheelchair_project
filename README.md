@@ -36,7 +36,7 @@
 
 ## Features
 
-<code>❯ REPLACE-ME</code>
+<code>❯ wait...</code>
 
 ---
 
@@ -57,54 +57,31 @@ Build  from the source and intsall dependencies:
 1. **Clone the repository:**
 
     ```sh
-    ❯ git clone ../
+    git clone https://github.com/bimnova001/ui_app-wheelchair_project.git
     ```
 
-2. **Navigate to the project directory:**
-
-    ```sh
-    ❯ cd 
-    ```
-
-3. **Install the dependencies:**
-
-<!-- SHIELDS BADGE CURRENTLY DISABLED -->
-	<!-- [![pip][pip-shield]][pip-link] -->
-	<!-- REFERENCE LINKS -->
-	<!-- [pip-shield]: https://img.shields.io/badge/Pip-3776AB.svg?style={badge_style}&logo=pypi&logoColor=white -->
-	<!-- [pip-link]: https://pypi.org/project/pip/ -->
-
-	**Using [pip](https://pypi.org/project/pip/):**
+2. **Install the dependencies:**
 
 	```sh
-	❯ pip install -r requirements.txt
+	pip install -r requirements.txt
 	```
 
 ### Usage
 
 Run the project with:
-
-**Using [pip](https://pypi.org/project/pip/):**
+How to run 
 ```sh
-python {entrypoint}
-```
-
-### Testing
-
- uses the {__test_framework__} test framework. Run the test suite with:
-
-**Using [pip](https://pypi.org/project/pip/):**
-```sh
-pytest
+python main.py
 ```
 
 ---
 
 ## Roadmap
 
-- [X] **`Task 1`**: <strike>Implement feature one.</strike>
-- [ ] **`Task 2`**: Implement feature two.
-- [ ] **`Task 3`**: Implement feature three.
+- [X] **`Task 1`**: <strike>connect ros2</strike>
+- [ ] **`Task 2`**: test navigation
+- [ ] **`Task 3`**: test lidar
+- [ ] **`Task 4`**: test with human
 
 ---
 
