@@ -2,7 +2,7 @@ import customtkinter as ctk
 from pages.menu_page import MenuPage
 from pages.joystick_page import JoystickPage
 from pages.ai_page import AIPage
-from pages.map_page import MapPage
+#from pages.map_page import MapPage
 from pages.app_config_page import AppConfigPage
 
 ctk.set_appearance_mode("System")
@@ -16,6 +16,7 @@ class App(ctk.CTk):
         # ทำให้ window ขยายได้
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
+        self.iconbitmap("logo/cisat.ico")
 
         # container สำหรับหน้าแต่ละหน้า
         self.container = ctk.CTkFrame(self)
@@ -24,7 +25,8 @@ class App(ctk.CTk):
         self.container.grid_columnconfigure(0, weight=1)      # เพิ่มบรรทัดนี้
 
         self.frames = {}
-        for F in (MenuPage, JoystickPage, AIPage, MapPage, AppConfigPage):
+        #MapPage ยังไม่ทำ
+        for F in (MenuPage, JoystickPage, AIPage, AppConfigPage):
             page_name = F.__name__
             frame = F(parent=self.container, controller=self)
             self.frames[page_name] = frame

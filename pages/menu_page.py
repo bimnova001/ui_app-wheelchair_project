@@ -272,4 +272,3 @@ class MenuPage(ctk.CTkFrame):
         # เพิ่มส่วนนี้
         if name == "Auto mode" and value == 0:
             self.call_func_by_name("Connect")
-
