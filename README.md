@@ -52,8 +52,9 @@ This project requires the following dependencies:
 
 ### Installation
 
-Build  from the source and intsall dependencies:
+Build  from the source and intsall dependencies
 
+You need to install lib from requirements and install ros2 
 1. **Clone the repository:**
 
     ```sh
@@ -69,7 +70,7 @@ Build  from the source and intsall dependencies:
 ### Usage
 
 Run the project with:
-How to run 
+Python
 ```sh
 python main.py
 ```
