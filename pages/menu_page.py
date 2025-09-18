@@ -1,12 +1,14 @@
-import subprocess
+import subprocess, threading
 import sys
 import customtkinter as ctk
 from tkinter import messagebox
-
 class MenuPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
+        self.startup_ran = False
+        self.log_textbox = None
+        
 
         # กำหนด function/checkbox ที่ต้องการจัดการและแสดง status
         self.func_list = [
@@ -14,18 +16,17 @@ class MenuPage(ctk.CTkFrame):
             {"name": "Save Map","cmd": ["ros2", "run", "nav2_map_server", "map_saver_cli", "-f", "/home/user/assets/map"]}
         ]
         self.checkbox_list = [
-            {"name": "Auto mode"},
-            {"name": "Manual mode"},
-            {"name": "Show battery"},
-        ]
+            {"name": "Enable Ai object detection"},
+            
+            ]
         
         self.func_list_start = [
             {"name": "Start LiDAR A2", "cmd": ["ros2", "launch", "rplidar_ros", "rplidar.launch.py",
                                                 "serial_port:=/dev/ttyUSB0",
                                                 "frame_id:=laser_frame"]},
-            {"name": "Start SLAM", "cmd": ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]},
-            {"name": "Start Navigation", "cmd": ["ros2", "launch", "nav2_bringup", "bringup_launch.py",
-                                                "map:=/home/user/assets/map.yaml"]},
+            {"name": "Start Nav2", "cmd": ["ros2", "launch", "nav2_bringup", "navigation_launch.py", "use_sim_time:=True"]},
+            {"name": "Scan + Save Map", "cmd": ["ros2", "run", "nav2_map_server", "map_saver_cli", "-f", "/home/user/assets/map"]},
+            
         ]
 
 
@@ -58,7 +59,7 @@ class MenuPage(ctk.CTkFrame):
         self.checkbox_vars = {}
         self.checkbox_status = {}
         for cb in self.checkbox_list:
-            var = ctk.IntVar(value=1 if cb["name"] == "Auto mode" else 0)
+            var = ctk.IntVar(value=1 if cb["name"] == "Enable Ai object detection" else 0)
             frame = ctk.CTkFrame(config_sidebar, fg_color="transparent")
             frame.pack(anchor="w", padx=20, pady=2, fill="x")
             cb_widget = ctk.CTkCheckBox(
@@ -88,7 +89,7 @@ class MenuPage(ctk.CTkFrame):
         ).grid(row=0, column=0, pady=(0, 10), sticky="ew")
 
         self.menu = ctk.CTkSegmentedButton(
-            main, values=["Joystick", "AI config", "SLAM Map"],
+            main, values=["Joystick", "Camara Ai", "SLAM Map"],
             command=self.select_menu
         )
         self.menu.grid(row=1, column=0, pady=(0, 20), ipadx=10, ipady=10, sticky="ew")
@@ -117,12 +118,13 @@ class MenuPage(ctk.CTkFrame):
             font=ctk.CTkFont(size=14, weight="bold")
         ).grid(row=0, column=0, pady=(10, 0), padx=10, sticky="w")
 
-        textbox = ctk.CTkTextbox(log_frame)
-        textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
-        textbox.insert("end", "ข้อความนี้สามารถเลื่อนขึ้นลงได้\n")
+        self.log_textbox = ctk.CTkTextbox(log_frame)  # สร้างที่นี่เลย
+        self.log_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self.log_textbox.insert("end", "Welcome :D\n")
+        self.log_textbox.configure(state="disabled")  # ป้องกันผู้ใช้แก้
 
         self.bind("<Visibility>", lambda e: self.update_points_list())
-
+    
         # Status Panel (ขวาสุด)
         status_panel = ctk.CTkFrame(self, width=180, fg_color="#232323")
         status_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 10), pady=10)
@@ -173,41 +175,85 @@ class MenuPage(ctk.CTkFrame):
         for cb in self.checkbox_list:
             self.set_checkbox_status(cb["name"], self.checkbox_vars[cb["name"]].get())
             
-            self.after(100, self.auto_run_commands)
+            self.after_idle(self.auto_run_commands)
+            self.after_idle(self.start_yolo_if_enabled)
+            self.after(1000, self.update_points_list)  # อัพเดตทุกวินาที
+            self.after_idle( self.navigate_to_named_goal)
+            
+            
+        
+    def navigate_to_named_goal(self):
+        threading.Thread(
+            target=lambda: subprocess.Popen([sys.executable, "-u", "pages/navigate_to_named_goal.py"]),
+            daemon=True
+        ).start()
 
     def auto_run_commands(self):
+        
+        
+        if self.startup_ran:
+            return
+        self.startup_ran = True  # กันไม่ให้รันซ้ำ
+
         for func in self.func_list_start:
             self.on_func_click(func)
             
+    def log(self, text):
+        self.log_textbox.configure(state="normal")
+        self.log_textbox.insert("end", text)
+        self.log_textbox.see("end")
+        self.log_textbox.configure(state="disabled")
+        
+    def start_yolo_if_enabled(self):
+        if self.checkbox_vars["Enable Ai object detection"].get() == 1:
+            cam_page = self.controller.frames.get("CameraPage")
+            if cam_page:
+                cam_page.yolo.start()
+
 
     def update_points_list(self):
-        for widget in self.points_frame.winfo_children():
-            widget.destroy()
+        points_frame = getattr(self, "points_frame", None)
+        if not points_frame:
+            return
+        # ลบ widget เก่า
+        for w in points_frame.winfo_children():
+            w.destroy()
+        # ดึง MapPage
         map_page = getattr(self.controller, "frames", {}).get("MapPage")
-        points = []
-        if map_page and hasattr(map_page, "points"):
-            points = map_page.points
+        points = map_page.get_points_list() if map_page else []
         if not points:
-            ctk.CTkLabel(self.points_frame, text="ไม่มีจุดที่เพิ่ม", text_color="#888").pack(anchor="w")
+            ctk.CTkLabel(points_frame, text="ไม่มีจุดที่เพิ่ม", text_color="#888").pack(anchor="w")
         else:
-            for idx, (x, y) in enumerate(points):
-                ctk.CTkButton(
-                    self.points_frame,
-                    text=f"Point {idx+1}: ({x},{y})",
+            for idx, p in enumerate(points):
+                x, y = p['map_x'], p['map_y']
+                btn = ctk.CTkButton(
+                    points_frame,
+                    text=f"{p.get('name', f'Point {idx+1}')} ({x:.2f},{y:.2f})",
                     fg_color="#b71c1c",
-                    command=lambda x=x, y=y: self.show_point(x, y)
-                ).pack(anchor="w", pady=2, fill="x")
+                    command=lambda px=x, py=y: self.send_goal_from_menu(px, py)
+                )
+                btn.pack(anchor="w", pady=2, fill="x")
+
+    def send_goal_from_menu(self, x, y):
+        # ส่ง ROS2 goal ผ่าน MapPage node
+        map_page = getattr(self.controller, "frames", {}).get("MapPage")
+        if map_page:
+            threading.Thread(target=lambda: map_page.ros2_node.send_goal(x, y), daemon=True).start()
+            self.log(f"Goal sent: x={x:.2f}, y={y:.2f}\n")
 
     def show_point(self, x, y):
         messagebox.showinfo("Point Selected", f"คุณเลือกตำแหน่ง\nx={x}, y={y}")
 
+
     def select_menu(self, value):
         if value == "Joystick":
             self.controller.show_frame("JoystickPage")
-        elif value == "AI config":
-            self.controller.show_frame("AIPage")
+        elif value == "Camara Ai":
+            self.controller.show_frame("CameraPage")
         elif value == "SLAM Map":
             self.controller.show_frame("MapPage")
+            
+        self.menu._variable.set("")
 
     def set_func_status(self, func, ok=True):
         if func in self.status_funcs:
@@ -234,30 +280,34 @@ class MenuPage(ctk.CTkFrame):
             messagebox.showerror("Error", f"Function '{func_name}' not found")
 
     def on_func_click(self, func):
-        try:
-            result = subprocess.run(func["cmd"], capture_output=True, text=True, timeout=5)
-            if result.returncode == 0:
-                # อัปเดตสถานะ
-                if func["name"] in self.status_funcs:
-                    self.set_func_status(func["name"], True)
-                elif func["name"] in self.status_start_funcs:
-                    self.set_start_func_status(func["name"], True)
-
-                messagebox.showinfo(func["name"], f"{func['name']} success:\n{result.stdout.strip()}")
-            else:
+        def run():
+            try:
+                self.log(f"Running: {func['name']}\n")
+                proc = subprocess.Popen(func["cmd"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                out, err = proc.communicate()
+                if proc.returncode == 0:
+                    if func["name"] in self.status_funcs:
+                        self.set_func_status(func["name"], True)
+                    elif func["name"] in self.status_start_funcs:
+                        self.set_start_func_status(func["name"], True)
+                    self.log(f"{func['name']} success:\n{out}\n")
+                    # messagebox.showinfo(func["name"], f"{func['name']} success:\n{out}")
+                else:
+                    if func["name"] in self.status_funcs:
+                        self.set_func_status(func["name"], False)
+                    elif func["name"] in self.status_start_funcs:
+                        self.set_start_func_status(func["name"], False)
+                    self.log(f"{func['name']} error:\n{err}\n")
+                    # messagebox.showerror(func["name"], f"{func['name']} error:\n{err}")
+            except Exception as e:
                 if func["name"] in self.status_funcs:
                     self.set_func_status(func["name"], False)
                 elif func["name"] in self.status_start_funcs:
                     self.set_start_func_status(func["name"], False)
-
-                messagebox.showerror(func["name"], f"{func['name']} error:\n{result.stderr.strip()}")
-        except Exception as e:
-            if func["name"] in self.status_funcs:
-                self.set_func_status(func["name"], False)
-            elif func["name"] in self.status_start_funcs:
-                self.set_start_func_status(func["name"], False)
-
-            messagebox.showerror(func["name"], f"{func['name']} error!\n{e}")
+                self.log(f"{func['name']} exception:\n{e}\n")
+                # messagebox.showerror(func["name"], f"{func['name']} error!\n{e}")
+                    
+        threading.Thread(target=run, daemon=True).start()
 
 
     def on_checkbox_toggle(self, name):
@@ -270,5 +320,12 @@ class MenuPage(ctk.CTkFrame):
         
 
         # เพิ่มส่วนนี้
-        if name == "Auto mode" and value == 0:
-            self.call_func_by_name("Connect")
+        if name == "Enable Ai object detection":
+            cam_page = self.controller.frames.get("CameraPage")
+            if cam_page:
+                if value:
+                    cam_page.yolo.start()
+                else:
+                    cam_page.yolo.stop()
+                    
+        

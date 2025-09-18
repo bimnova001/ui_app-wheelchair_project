@@ -1,10 +1,11 @@
 # map_page.py
 import customtkinter as ctk
 from PIL import Image, ImageTk
-import os, json
+import os, json, threading, yaml
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseStamped, Twist
+from tkinter import messagebox
 
 POINTS_FILE = "assets/points.json"
 
@@ -12,7 +13,6 @@ class ROS2GoalPublisher(Node):
     def __init__(self):
         super().__init__('goal_publisher')
         self.publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
-        # cmd_vel publisher for manual motor control
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
     def send_goal(self, x, y):
@@ -30,13 +30,24 @@ class ROS2GoalPublisher(Node):
         twist.angular.z = float(angular_z)
         self.cmd_pub.publish(twist)
 
-
 class MapPage(ctk.CTkFrame):
     def __init__(self, parent, controller,
                  pgm_path="assets/map.pgm", yaml_path="assets/map.yaml", png_path="assets/map.png"):
         super().__init__(parent)
         self.controller = controller
         self.points = []
+
+        # read map.yaml for resolution/origin
+        self.resolution = 0.05  # default
+        self.origin = [0,0,0]
+        if os.path.exists(yaml_path):
+            try:
+                with open(yaml_path, "r") as f:
+                    map_data = yaml.safe_load(f)
+                    self.resolution = map_data.get("resolution", 0.05)
+                    self.origin = map_data.get("origin", [0,0,0])
+            except Exception as e:
+                print("Error reading map.yaml:", e)
 
         # layout
         self.grid_rowconfigure(1, weight=1)
@@ -55,7 +66,7 @@ class MapPage(ctk.CTkFrame):
                     img = Image.open(pgm_path)
                     img.save(png_path)
                 except Exception as e:
-                    ctk.CTkMessagebox(title="Error", message=f"ไม่สามารถแปลงไฟล์ PGM เป็น PNG: {e}")
+                    messagebox.showerror("Error", f"ไม่สามารถแปลงไฟล์ PGM เป็น PNG: {e}")
             self.load_map(png_path)
         else:
             self.canvas.create_text(250, 250, text="ไม่พบแผนที่ (PGM YAML)", font=("Arial", 16, "bold"), fill="red")
@@ -70,24 +81,21 @@ class MapPage(ctk.CTkFrame):
         self.buttons_frame.pack(pady=5, fill="x")
 
         ctk.CTkButton(sidebar, text="⬅ Back to Menu", command=lambda: controller.show_frame("MenuPage")).pack(side="bottom", pady=20, fill="x")
+        ctk.CTkButton(sidebar, text="Scan Map", command=self.scan_map).pack(side="bottom", pady=5, fill="x")
+        ctk.CTkButton(sidebar, text="Save Map", command=self.save_map).pack(side="bottom", pady=5, fill="x")
 
-        # ROS2 node (สร้างเมื่อเข้า MapPage)
-        # rclpy.init ควรเรียกแค่ครั้งเดียวในโปรแกรมหลักก่อนสร้าง widget หลายตัว
-        try:
-            rclpy.get_default_context()
-        except Exception:
-            pass
+        # ROS2 node
         if not rclpy.ok():
             rclpy.init(args=None)
         self.ros2_node = ROS2GoalPublisher()
 
-        # motor control buttons
+        # motor control
         ctk.CTkLabel(sidebar, text="Motor Control:", font=ctk.CTkFont(size=14)).pack(pady=(20, 5))
         ctk.CTkButton(sidebar, text="Forward", command=self.motor_forward).pack(fill="x", pady=2)
         ctk.CTkButton(sidebar, text="Backward", command=self.motor_backward).pack(fill="x", pady=2)
         ctk.CTkButton(sidebar, text="Stop", command=self.motor_stop).pack(fill="x", pady=2)
 
-        # load saved points if file exists
+        # load saved points
         self.load_points()
 
     def load_map(self, png_path):
@@ -98,55 +106,61 @@ class MapPage(ctk.CTkFrame):
 
     def add_point(self, event):
         x, y = event.x, event.y
-        # บันทึกทั้งพิกัดผืนผ้า/พิกัดจริง: ตอนนี้เป็น pixel -> ต้องแปลงเป็น map coordinate ถ้าต้องการความแม่นยำ
-        self.points.append({'x': x, 'y': y, 'name': f"Point {len(self.points)+1}"})
+        map_x, map_y = self.pixel_to_map(x, y)
+        self.points.append({'x': x, 'y': y, 'map_x': map_x, 'map_y': map_y, 'name': f"Point {len(self.points)+1}"})
         self.canvas.create_oval(x-6, y-6, x+6, y+6, fill="red")
         self.refresh_buttons()
         self.save_points()
 
     def refresh_buttons(self):
-        # เคลียร์ปุ่มเก่า
         for widget in self.buttons_frame.winfo_children():
             widget.destroy()
-        # สร้างปุ่มใหม่
         for i, p in enumerate(self.points):
             name = p.get('name', f"Point {i+1}")
             btn = ctk.CTkButton(self.buttons_frame, text=name, command=lambda idx=i: self.go_to_point(idx))
             btn.pack(pady=4, fill="x")
+            # add delete button
+            del_btn = ctk.CTkButton(self.buttons_frame, text="✕", width=20, command=lambda idx=i: self.delete_point(idx))
+            del_btn.place(x=450, y=4 + i*34)  # adjust y according to packing
+
+    def delete_point(self, index):
+        self.points.pop(index)
+        self.refresh_buttons()
+        self.save_points()
+        self.redraw_points()
+
+    def redraw_points(self):
+        self.canvas.delete("all")
+        self.load_map("assets/map.png")
+        for p in self.points:
+            x, y = p['x'], p['y']
+            self.canvas.create_oval(x-6, y-6, x+6, y+6, fill="red")
 
     def go_to_point(self, index):
         p = self.points[index]
-        # NOTE: ที่นี่ p.x/p.y เป็น pixel; ต้องแปลงเป็นพิกัด map จริง (meter) ก่อนส่งให้ nav
-        # สมมติว่ามีฟังก์ชัน pixel_to_map(x,y) ที่แปลงพิกัด
-        try:
-            map_x, map_y = self.pixel_to_map(p['x'], p['y'])
-            self.ros2_node.send_goal(map_x, map_y)
-            ctk.CTkMessagebox(title="Goal Sent", message=f"ส่งตำแหน่งไป ROS2: x={map_x:.2f}, y={map_y:.2f}")
-        except Exception as e:
-            ctk.CTkMessagebox(title="Error", message=f"ส่ง goal ไม่สำเร็จ: {e}")
+        def send_goal_thread():
+            try:
+                self.ros2_node.send_goal(p['map_x'], p['map_y'])
+                messagebox.showinfo("Goal Sent", f"ส่งตำแหน่งไป ROS2: x={p['map_x']:.2f}, y={p['map_y']:.2f}")
+            except Exception as e:
+                messagebox.showerror("Error", f"ส่ง goal ไม่สำเร็จ: {e}")
+        threading.Thread(target=send_goal_thread, daemon=True).start()
 
-    # ตัวอย่างการแปลง pixel -> map coordinate (ต้องแก้ตามข้อมูล map.yaml ของคุณ)
     def pixel_to_map(self, px, py):
-        # ตัวอย่างสมมติ: map image ขนาด 500x500 แสดงพื้นที่จริง 10m x 10m แก้ตามจริง!
-        map_width_m = 10.0
-        map_height_m = 10.0
-        img_w = 500
-        img_h = 500
-        mx = (px / img_w) * map_width_m  # แปลงเป็นเมตร
-        my = ((img_h - py) / img_h) * map_height_m  # หมุนแกน y
+        img_w, img_h = 500, 500
+        mx = self.origin[0] + px * self.resolution
+        my = self.origin[1] + (img_h - py) * self.resolution
         return mx, my
 
-    # motor functions (publish Twist)
     def motor_forward(self):
-        self.ros2_node.send_cmd_vel(0.2, 0.0)  # เดินหน้า 0.2 m/s
+        threading.Thread(target=lambda: self.ros2_node.send_cmd_vel(0.2, 0.0), daemon=True).start()
 
     def motor_backward(self):
-        self.ros2_node.send_cmd_vel(-0.1, 0.0)  # ถอยหลัง
+        threading.Thread(target=lambda: self.ros2_node.send_cmd_vel(-0.1, 0.0), daemon=True).start()
 
     def motor_stop(self):
-        self.ros2_node.send_cmd_vel(0.0, 0.0)
+        threading.Thread(target=lambda: self.ros2_node.send_cmd_vel(0.0, 0.0), daemon=True).start()
 
-    # Save/load points to JSON
     def save_points(self):
         try:
             os.makedirs(os.path.dirname(POINTS_FILE), exist_ok=True)
@@ -160,16 +174,13 @@ class MapPage(ctk.CTkFrame):
             try:
                 with open(POINTS_FILE, "r", encoding="utf-8") as f:
                     self.points = json.load(f)
-                # draw points on canvas
-                for p in self.points:
-                    x, y = p['x'], p['y']
-                    self.canvas.create_oval(x-6, y-6, x+6, y+6, fill="red")
+                self.redraw_points()
                 self.refresh_buttons()
             except Exception as e:
                 print("Load points error:", e)
-
-    def show_point(self, x, y):
-        ctk.CTkMessagebox(title="Point Selected", message=f"คุณเลือกตำแหน่ง\nx={x}, y={y}")
+    def get_points_list(self):
+        # คืน list ของ points พร้อม map_x, map_y
+        return self.points
 
 
 if __name__ == "__main__":

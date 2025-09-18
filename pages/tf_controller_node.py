@@ -19,6 +19,7 @@ class TFController(Node):
 
         self.odom_sub = self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
         self.goal_sub = self.create_subscription(PoseStamped, '/goal_pose', self.goal_cb, 10)
+        self.initialpose_sub = self.create_subscription(PoseWithCovarianceStamped, '/initialpose', self.initialpose_cb, 10)
 
         # โหลดโมเดล
         self.model = tf.keras.models.load_model(model_path)

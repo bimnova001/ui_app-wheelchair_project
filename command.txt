@@ -14,3 +14,8 @@ ros2 launch nav2_bringup bringup_launch.py map:=/home/user/assets/map.yaml
 รัน ROS2 bridge node สำหรับ Navigation
 Terminal C:
 python3 navigate_to_named_goal.py
+
+
+self.log(f"{func['name']} success:\n{out}\n")
+
+self.log(f"{func['name']} error:\n{err}\n")
