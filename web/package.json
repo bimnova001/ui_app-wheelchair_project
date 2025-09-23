@@ -1,0 +1,12 @@
+{
+  "name": "ros2-web-control",
+  "version": "1.0.0",
+  "description": "Web interface to control ROS2 robot: joystick, map, camera.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

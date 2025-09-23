@@ -2,12 +2,17 @@ import subprocess, threading
 import sys
 import customtkinter as ctk
 from tkinter import messagebox
+from joystick import VirtualJoystick
+#from pages.status_node import StatusData
+
 class MenuPage(ctk.CTkFrame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
         self.startup_ran = False
         self.log_textbox = None
+        self.battery_percent = 0
+        
         
 
         # กำหนด function/checkbox ที่ต้องการจัดการและแสดง status
@@ -17,15 +22,14 @@ class MenuPage(ctk.CTkFrame):
         ]
         self.checkbox_list = [
             {"name": "Enable Ai object detection"},
+            {"name": "Manual Control"},
             
             ]
         
         self.func_list_start = [
-            {"name": "Start LiDAR A2", "cmd": ["ros2", "launch", "rplidar_ros", "rplidar.launch.py",
-                                                "serial_port:=/dev/ttyUSB0",
-                                                "frame_id:=laser_frame"]},
+            {"name": "Start robot", "cmd": ["ros2", "launch", "turtlebot3_bringup", "robot.launch.py"]},
+            {"name": "Start SLAM Mapping", "cmd": ["ros2", "launch", "slam_toolbox", "online_async_launch.py", "use_sim_time:=true"]},
             {"name": "Start Nav2", "cmd": ["ros2", "launch", "nav2_bringup", "navigation_launch.py", "use_sim_time:=True"]},
-            {"name": "Scan + Save Map", "cmd": ["ros2", "run", "nav2_map_server", "map_saver_cli", "-f", "/home/user/assets/map"]},
             
         ]
 
@@ -35,6 +39,10 @@ class MenuPage(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=0)
         self.grid_columnconfigure(1, weight=1)
         self.grid_columnconfigure(2, weight=0)
+        
+
+
+
 
         # Sidebar
         config_sidebar = ctk.CTkFrame(self, width=200, fg_color="#18191c")
@@ -59,7 +67,7 @@ class MenuPage(ctk.CTkFrame):
         self.checkbox_vars = {}
         self.checkbox_status = {}
         for cb in self.checkbox_list:
-            var = ctk.IntVar(value=1 if cb["name"] == "Enable Ai object detection" else 0)
+            var = ctk.IntVar()#value=1 if cb["name"] == "Enable Ai object detection" else 0)
             frame = ctk.CTkFrame(config_sidebar, fg_color="transparent")
             frame.pack(anchor="w", padx=20, pady=2, fill="x")
             cb_widget = ctk.CTkCheckBox(
@@ -89,10 +97,11 @@ class MenuPage(ctk.CTkFrame):
         ).grid(row=0, column=0, pady=(0, 10), sticky="ew")
 
         self.menu = ctk.CTkSegmentedButton(
-            main, values=["Joystick", "Camara Ai", "SLAM Map"],
+            main, values=["Camara Ai", "Menu", "SLAM Map"],
             command=self.select_menu
         )
         self.menu.grid(row=1, column=0, pady=(0, 20), ipadx=10, ipady=10, sticky="ew")
+        self.menu.set("Menu")  # ตั้งค่าเริ่มต้น
 
         content_box = ctk.CTkFrame(main, fg_color="#232323", corner_radius=12)
         content_box.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
@@ -111,19 +120,61 @@ class MenuPage(ctk.CTkFrame):
         log_frame = ctk.CTkFrame(main, fg_color="#18191c", corner_radius=12)
         log_frame.grid(row=3, column=0, sticky="nsew", padx=10, pady=(10, 0))
         log_frame.grid_rowconfigure(1, weight=1)
-        log_frame.grid_columnconfigure(0, weight=1)
+        # ให้คอลัมน์ซ้ายกว้างกว่า ขวา
+        log_frame.grid_columnconfigure(0, weight=3)
+        log_frame.grid_columnconfigure(1, weight=1)
+        log_frame.grid_rowconfigure(2, weight=0)
 
         ctk.CTkLabel(
             log_frame, text="Log / Information",
             font=ctk.CTkFont(size=14, weight="bold")
-        ).grid(row=0, column=0, pady=(10, 0), padx=10, sticky="w")
+        ).grid(row=0, column=0, columnspan=2, pady=(10, 0), padx=10, sticky="w")
 
-        self.log_textbox = ctk.CTkTextbox(log_frame)  # สร้างที่นี่เลย
-        self.log_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        # left: log textbox
+        left_box = ctk.CTkFrame(log_frame, fg_color="transparent")
+        left_box.grid(row=1, column=0, sticky="nsew", padx=(10, 6), pady=10)
+        left_box.grid_rowconfigure(0, weight=1)
+        left_box.grid_columnconfigure(0, weight=1)
+
+        self.log_textbox = ctk.CTkTextbox(left_box)
+        self.log_textbox.grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
         self.log_textbox.insert("end", "Welcome :D\n")
-        self.log_textbox.configure(state="disabled")  # ป้องกันผู้ใช้แก้
+        self.log_textbox.configure(state="disabled")
+
+        # right: joystick container (มี title + canvas + status)
+        right_box = ctk.CTkFrame(log_frame, width=260, fg_color="#2a2a2a", corner_radius=8)
+        right_box.grid(row=1, column=1, sticky="nsew", padx=(6, 10), pady=10)
+        right_box.grid_rowconfigure(0, weight=0)
+        right_box.grid_rowconfigure(1, weight=1)
+        right_box.grid_rowconfigure(2, weight=0)
+        right_box.grid_columnconfigure(0, weight=1)
+        
+        ctk.CTkLabel(right_box, text="Manual Joystick", font=ctk.CTkFont(size=13, weight="bold")).grid(row=0, column=0, pady=(8, 4))
+        # สร้าง VirtualJoystick (จาก joystick.py) ให้เหมาะกับธีม
+        self.joystick_widget = VirtualJoystick(
+            right_box, size=240, knob_size=56, callback=self.update_joystick_status,
+            bg="#2a2a2a", ring_fill="#333333", ring_outline="#6f6f6f", knob_color="#2ca3ff"
+        )
+        # ใช้ grid ของ tkinter canvas ได้ตรง ๆ
+        self.joystick_widget.grid(row=1, column=0, padx=10, pady=6, sticky="n")
+
+        self.joystick_status = ctk.CTkLabel(right_box, text="x=0.00, y=0.00", font=ctk.CTkFont(size=12))
+        self.joystick_status.grid(row=2, column=0, pady=(6, 10))
+
+        # เริ่มด้วยซ่อน joystick หาก Manual Control ปิด
+        if not self.checkbox_vars.get("Manual Control") or self.checkbox_vars["Manual Control"].get() == 0:
+            right_box.grid_remove()
+        self._right_box = right_box  # เก็บ ref เพื่อแสดง/ซ่อน
+
+        
 
         self.bind("<Visibility>", lambda e: self.update_points_list())
+        
+        status_panel = ctk.CTkFrame(self, width=180, fg_color="#232323")
+        status_panel.grid(row=0, column=2, sticky="nsew", padx=(10, 10), pady=10)
+        status_panel.grid_propagate(False)
+
+        ctk.CTkLabel(status_panel, text="Status", font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 10))
     
         # Status Panel (ขวาสุด)
         status_panel = ctk.CTkFrame(self, width=180, fg_color="#232323")
@@ -181,6 +232,22 @@ class MenuPage(ctk.CTkFrame):
             self.after_idle( self.navigate_to_named_goal)
             
             
+        
+    def update_joystick_status(self, x, y):
+        self.joystick_status.configure(text=f"x={x:.2f}, y={y:.2f}")
+        
+    def burger_camara(self):
+        threading.Thread(
+            target=lambda: subprocess.Popen([sys.executable, "-u", "pages/burger_camara.py"]),
+            daemon=True
+        ).start()
+        
+    def burger_detect(self):
+        threading.Thread(
+            target=lambda: subprocess.Popen([sys.executable, "-u", "pages/burger_detect.py"]),
+            daemon=True
+        ).start()
+        
         
     def navigate_to_named_goal(self):
         threading.Thread(
@@ -246,14 +313,15 @@ class MenuPage(ctk.CTkFrame):
 
 
     def select_menu(self, value):
-        if value == "Joystick":
-            self.controller.show_frame("JoystickPage")
-        elif value == "Camara Ai":
+        if value == "Camara Ai":
             self.controller.show_frame("CameraPage")
         elif value == "SLAM Map":
-            self.controller.show_frame("MapPage")
+            try :
+                self.controller.show_frame("MapPage")
+            except Exception as e:
+                self.log(f"Error opening MapPage: {e}\n")
             
-        self.menu._variable.set("")
+        self.menu.set("Menu")
 
     def set_func_status(self, func, ok=True):
         if func in self.status_funcs:
@@ -327,5 +395,26 @@ class MenuPage(ctk.CTkFrame):
                     cam_page.yolo.start()
                 else:
                     cam_page.yolo.stop()
-                    
+        elif name == "Manual Control":
+            # แสดง/ซ่อน joystick container (right_box)
+            if value:
+                try:
+                    self._right_box.grid()
+                except Exception:
+                    pass
+            else:
+                try:
+                    self._right_box.grid_remove()
+                except Exception:
+                    pass
+
+
+    # ------------ Joystick callback handler ----------
+    def update_joystick_status(self, x, y):
+        # แสดงบน label
+        try:
+            self.joystick_status.configure(text=f"x={x:.2f}, y={y:.2f}")
+        except Exception:
+            pass
+                        
         

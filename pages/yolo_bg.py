@@ -1,90 +1,40 @@
-import threading
-import cv2
-from ultralytics import YOLO
-import torch
+import rclpy
+from rclpy.node import Node
+from sensor_msgs.msg import CompressedImage
+from std_msgs.msg import String
+from cv_bridge import CvBridge
+import cv2, json
 
-class YoloBackground:
-    def __init__(self, log_func=print, use_gpu=True, img_size=640):
-        self.log_func = log_func
-        self.img_size = img_size
-
-        # ตรวจสอบ GPU
-        self.device = 'cuda' if use_gpu and torch.cuda.is_available() else 'cpu'
-        self.model = YOLO("model/yolov8n.pt")
-        self.model.fuse()  # fuse conv+BN สำหรับเร็วขึ้น
-        self.model.to(self.device)
-        self.model.half() if self.device == 'cuda' else None  # ใช้ FP16 บน GPU
-
-        self.cap = None
-        self.cam_id = 0
-        self.running = False
-        self.thread = None
-        self.latest_frame = None
+class YOLOBackground(Node):
+    def __init__(self):
+        super().__init__('yolo_bg')
+        self.bridge = CvBridge()
+        self.frame = None
         self.detections = []
+        self.active = False  # flag enable/disable
 
-    def start(self, cam_id=0):
-        if self.running:
-            return
-        self.cam_id = cam_id
-        self.cap = cv2.VideoCapture(self.cam_id)
-        if not self.cap.isOpened():
-            self.log_func(f"[YOLO] Cannot open camera {self.cam_id}")
-            return
+        # subscription จะ subscribe แต่จะใช้ frame ก็ต่อเมื่อ active=True
+        self.create_subscription(CompressedImage, '/yolo/image/compressed', self.image_cb, 10)
+        self.create_subscription(String, '/yolo/detections', self.detection_cb, 10)
 
-        self.running = True
-        self.thread = threading.Thread(target=self._loop, daemon=True)
-        self.thread.start()
-        self.log_func(f"[YOLO] Started on device {self.device}")
+    def start(self):
+        self.active = True
+        self.get_logger().info("YOLO detection started")
 
     def stop(self):
-        self.running = False
-        if self.cap:
-            self.cap.release()
-            self.cap = None
-        self.latest_frame = None
-        self.detections = []
-        self.log_func("[YOLO] Stopped")
+        self.active = False
+        self.get_logger().info("YOLO detection stopped")
 
-    def change_camera(self, cam_id):
-        self.stop()
-        self.start(cam_id)
+    def image_cb(self, msg: CompressedImage):
+        if self.active:
+            self.frame = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
 
-    def _loop(self):
-        while self.running and self.cap.isOpened():
-            ret, frame = self.cap.read()
-            if not ret:
-                continue
-
-            # YOLO inference
-            results = self.model.predict(
-                frame,
-                imgsz=self.img_size,
-                device=self.device,
-                half=(self.device=='cuda'),
-                verbose=False
-            )
-            annotated_frame = results[0].plot()
-            self.latest_frame = annotated_frame
-
-            # เก็บ detections
-            self.detections = []
-            for det in results[0].boxes.data.tolist():
-                x1, y1, x2, y2, conf, cls = det
-                self.detections.append({
-                    "cls": int(cls),
-                    "conf": conf,
-                    "bbox": [x1, y1, x2, y2]
-                })
+    def detection_cb(self, msg: String):
+        if self.active:
+            try:
+                self.detections = json.loads(msg.data)
+            except json.JSONDecodeError:
+                self.get_logger().error("Cannot decode YOLO detection")
 
     def get_frame(self):
-        return self.latest_frame
-
-    def detect_nearby_objects(self, distance_threshold=3.0):
-        nearby = []
-        for det in self.detections:
-            x1, y1, x2, y2 = det["bbox"]
-            bbox_width = x2 - x1
-            distance_est = 1 / (bbox_width / 640 + 1e-6) * 2
-            if distance_est < distance_threshold:
-                nearby.append(det)
-        return nearby
+        return self.frame if self.active else None

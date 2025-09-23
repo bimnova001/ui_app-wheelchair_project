@@ -1,0 +1,383 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>ROS2 Web Control</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <link rel="stylesheet" href="style.css">
+  <!-- roslibjs -->
+  <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
+  <!-- nipplejs for joystick -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
+</head>
+<body>
+  <div id="topbar">
+    <label>ROS Bridge WebSocket URL: </label>
+    <input id="ros-url" type="text" value="ws://192.168.1.100:9090" style="width:280px"/>
+    <button id="connect-btn">Connect</button>
+    <span id="ros-status" class="status disconnected">Disconnected</span>
+  </div>
+
+  <div id="container">
+    <div id="left-panel">
+      <h3>Joystick</h3>
+      <div id="joystick-area"></div>
+      <div id="controls">
+        <label>Max Linear m/s: <input id="max-linear" type="number" value="0.20" step="0.01"/></label>
+        <label>Max Angular rad/s: <input id="max-angular" type="number" value="0.7" step="0.01"/></label>
+        <button id="stop-btn">STOP</button>
+      </div>
+
+      <h3>Battery</h3>
+      <div>Battery: <span id="battery">N/A</span></div>
+
+      <h3>Saved Goals</h3>
+      <div id="goals-list">No goals yet</div>
+      <button id="clear-goals">Clear saved goals</button>
+    </div>
+
+    <div id="center-panel">
+      <h3>Map (click to publish goal)</h3>
+      <canvas id="map-canvas" width="600" height="600"></canvas>
+      <div id="map-info">Map: not loaded</div>
+    </div>
+
+    <div id="right-panel">
+      <h3>Camera</h3>
+      <img id="camera-img" alt="camera" style="width:640px; height:360px; background:#000;"/>
+      <div>
+        <label>Camera topic:
+          <input id="camera-topic" type="text" value="/camera/image/compressed"/>
+        </label>
+        <button id="subscribe-camera">Subscribe</button>
+      </div>
+
+      <h3>Status Log</h3>
+      <pre id="log" style="height:200px; overflow:auto; background:#111; color:#0f0; padding:8px;"></pre>
+    </div>
+  </div>
+
+<script>
+/* ---------- Globals ---------- */
+let ros = null;
+let cmdVelTopic = null;
+let mapTopic = null;
+let cameraTopic = null;
+let batteryTopic = null;
+let goalTopic = null;
+
+/* ----- UI elements ----- */
+const logEl = document.getElementById('log');
+const rosStatusEl = document.getElementById('ros-status');
+const connectBtn = document.getElementById('connect-btn');
+const rosUrlInput = document.getElementById('ros-url');
+
+function log(msg) {
+  console.log(msg);
+  logEl.textContent += msg + '\\n';
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ---------- Connect to rosbridge ---------- */
+connectBtn.addEventListener('click', () => {
+  if (ros && ros.isConnected) { disconnectRos(); return; }
+  const url = rosUrlInput.value.trim();
+  connectRos(url);
+});
+
+function connectRos(url) {
+  ros = new ROSLIB.Ros({url});
+  ros.on('connection', () => {
+    rosStatusEl.textContent = 'Connected';
+    rosStatusEl.className = 'status connected';
+    log('Connected to rosbridge at ' + url);
+    setupTopics();
+  });
+  ros.on('close', () => {
+    rosStatusEl.textContent = 'Disconnected';
+    rosStatusEl.className = 'status disconnected';
+    log('ROS connection closed');
+  });
+  ros.on('error', (err) => {
+    rosStatusEl.textContent = 'Error';
+    rosStatusEl.className = 'status error';
+    log('ROS connection error: ' + err);
+  });
+}
+
+function disconnectRos() {
+  if (ros) ros.close();
+  ros = null;
+  rosStatusEl.textContent = 'Disconnected';
+  rosStatusEl.className = 'status disconnected';
+}
+
+/* ---------- Topics & publishers ---------- */
+function setupTopics() {
+  // cmd_vel publisher
+  cmdVelTopic = new ROSLIB.Topic({
+    ros, name: '/cmd_vel', messageType: 'geometry_msgs/Twist'
+  });
+
+  // goal publisher (PoseStamped)
+  goalTopic = new ROSLIB.Topic({
+    ros, name: '/goal_pose', messageType: 'geometry_msgs/PoseStamped'
+  });
+
+  // map subscriber
+  mapTopic = new ROSLIB.Topic({
+    ros, name: '/map', messageType: 'nav_msgs/OccupancyGrid'
+  });
+  mapTopic.subscribe(onMap);
+
+  // battery subscriber (try /battery_state or /battery)
+  batteryTopic = new ROSLIB.Topic({
+    ros, name: '/battery_state', messageType: 'sensor_msgs/BatteryState'
+  });
+  batteryTopic.subscribe(onBattery);
+
+  log('Topics set up (cmd_vel, goal_pose, map, battery_state).');
+}
+
+/* ---------- Joystick (nipplejs) ---------- */
+const joystickArea = document.getElementById('joystick-area');
+const maxLinearInput = document.getElementById('max-linear');
+const maxAngularInput = document.getElementById('max-angular');
+const stopBtn = document.getElementById('stop-btn');
+
+const manager = nipplejs.create({
+  zone: joystickArea,
+  mode: 'static',
+  position: {left: '50%', top: '50%'},
+  color: 'lightblue',
+  size: 180
+});
+
+let joystickVector = {x:0, y:0};
+
+manager.on('move', (evt, data) => {
+  if (!data || !data.vector) return;
+  joystickVector.x = data.vector.x; // horizontal (-1..1)
+  joystickVector.y = data.vector.y; // vertical (-1..1), up negative?
+  // nipplejs vector y: -1 is up, +1 is down. We'll map up -> positive linear.
+});
+manager.on('end', () => {
+  joystickVector.x = 0;
+  joystickVector.y = 0;
+  publishTwist(0,0);
+});
+
+function publishTwist(linear, angular) {
+  if (!ros || !cmdVelTopic) return;
+  const twist = new ROSLIB.Message({
+    linear: {x: linear, y:0, z:0},
+    angular: {x:0, y:0, z: angular}
+  });
+  cmdVelTopic.publish(twist);
+}
+
+setInterval(()=>{
+  // map joystick vector to twist
+  const maxLinear = parseFloat(maxLinearInput.value) || 0.2;
+  const maxAngular = parseFloat(maxAngularInput.value) || 0.7;
+  // use -y for forward since nipple y is -1 up
+  const linear = (-joystickVector.y) * maxLinear;
+  const angular = (-joystickVector.x) * maxAngular;
+  // small deadzone
+  const lin = Math.abs(linear) < 0.02 ? 0 : linear;
+  const ang = Math.abs(angular) < 0.02 ? 0 : angular;
+  publishTwist(lin, ang);
+}, 80);
+
+stopBtn.addEventListener('click', () => {
+  publishTwist(0,0);
+});
+
+/* ---------- Map rendering ---------- */
+const mapCanvas = document.getElementById('map-canvas');
+const mapCtx = mapCanvas.getContext('2d');
+let lastMap = null;
+
+function onMap(msg) {
+  try {
+    // msg: nav_msgs/OccupancyGrid
+    const width = msg.info.width;
+    const height = msg.info.height;
+    const resolution = msg.info.resolution;
+    const origin = msg.info.origin; // pose
+    const data = msg.data; // array of int8
+
+    // store for coordinate conversion later
+    lastMap = {width, height, resolution, origin, data};
+
+    // draw to canvas scaled to canvas size
+    const canvasW = mapCanvas.width;
+    const canvasH = mapCanvas.height;
+    const sx = canvasW / width;
+    const sy = canvasH / height;
+
+    // create ImageData
+    const imageData = mapCtx.createImageData(width, height);
+    for (let i=0;i<width*height;i++){
+      const v = data[i];
+      let color = 127; // unknown grey
+      if (v === -1) color = 127;
+      else if (v >= 50) color = 0; // occupied -> black
+      else color = 255; // free -> white
+
+      imageData.data[i*4+0] = color;
+      imageData.data[i*4+1] = color;
+      imageData.data[i*4+2] = color;
+      imageData.data[i*4+3] = 255;
+    }
+    // put on temporary canvas to scale cleanly
+    const tmp = document.createElement('canvas');
+    tmp.width = width;
+    tmp.height = height;
+    tmp.getContext('2d').putImageData(imageData,0,0);
+
+    // draw scaled
+    mapCtx.clearRect(0,0,canvasW,canvasH);
+    mapCtx.drawImage(tmp, 0,0, canvasW, canvasH);
+
+    document.getElementById('map-info').textContent = `Map ${width}x${height}, res=${resolution.toFixed(3)} m/px`;
+    log('Received map, drawn.');
+  } catch (e) {
+    console.error(e);
+    log('Error drawing map: ' + e);
+  }
+}
+
+// click on canvas -> create PoseStamped (map coords) and publish to /goal_pose
+mapCanvas.addEventListener('click', (ev)=>{
+  if (!lastMap || !ros || !goalTopic) {
+    log('Map not available or not connected.');
+    return;
+  }
+  // compute pixel in map coords
+  const rect = mapCanvas.getBoundingClientRect();
+  const xcanvas = ev.clientX - rect.left;
+  const ycanvas = ev.clientY - rect.top;
+
+  // map pixel index
+  const mx_px = Math.floor((xcanvas / mapCanvas.width) * lastMap.width);
+  const my_px = Math.floor(((mapCanvas.height - ycanvas) / mapCanvas.height) * lastMap.height); // y flip
+
+  // convert to map meters:
+  const map_x = lastMap.origin.position.x + mx_px * lastMap.resolution;
+  const map_y = lastMap.origin.position.y + my_px * lastMap.resolution;
+
+  // Create PoseStamped
+  const poseMsg = new ROSLIB.Message({
+    header: { frame_id: "map" },
+    pose: {
+      position: { x: map_x, y: map_y, z: 0.0 },
+      orientation: { x: 0, y: 0, z: 0, w: 1 }
+    }
+  });
+  goalTopic.publish(poseMsg);
+  log(`Published goal_pose: x=${map_x.toFixed(2)}, y=${map_y.toFixed(2)}`);
+  // save to goals list
+  addGoal({name: `Goal ${Date.now()}`, map_x, map_y});
+});
+
+/* ---------- Goals list UI ---------- */
+const goalsList = document.getElementById('goals-list');
+const clearGoalsBtn = document.getElementById('clear-goals');
+let savedGoals = [];
+
+function addGoal(g) {
+  savedGoals.push(g);
+  renderGoals();
+}
+
+function renderGoals(){
+  goalsList.innerHTML = '';
+  if (savedGoals.length === 0) {
+    goalsList.textContent = 'No goals yet';
+    return;
+  }
+  savedGoals.forEach((g, idx) => {
+    const btn = document.createElement('button');
+    btn.textContent = `${g.name} (${g.map_x.toFixed(2)},${g.map_y.toFixed(2)})`;
+    btn.onclick = ()=>{
+      // publish goal
+      const poseMsg = new ROSLIB.Message({
+        header: { frame_id: "map" },
+        pose: {
+          position: { x: g.map_x, y: g.map_y, z: 0.0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 }
+        }
+      });
+      if (goalTopic) goalTopic.publish(poseMsg);
+      log(`Sent saved goal: x=${g.map_x.toFixed(2)}, y=${g.map_y.toFixed(2)}`);
+    };
+    goalsList.appendChild(btn);
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.style.marginLeft = '6px';
+    del.onclick = ()=>{
+      savedGoals.splice(idx,1);
+      renderGoals();
+    };
+    goalsList.appendChild(del);
+    goalsList.appendChild(document.createElement('br'));
+  });
+}
+
+clearGoalsBtn.addEventListener('click', ()=>{
+  savedGoals = [];
+  renderGoals();
+});
+
+/* ---------- Camera subscription ---------- */
+const cameraImg = document.getElementById('camera-img');
+const cameraTopicInput = document.getElementById('camera-topic');
+const subscribeCameraBtn = document.getElementById('subscribe-camera');
+let cameraSubscriber = null;
+
+subscribeCameraBtn.addEventListener('click', ()=>{
+  if (!ros) { log('ROS not connected'); return; }
+  const topicName = cameraTopicInput.value.trim();
+  if (!topicName) return;
+  if (cameraSubscriber) cameraSubscriber.unsubscribe();
+  // try compressed image first
+  cameraSubscriber = new ROSLIB.Topic({
+    ros,
+    name: topicName,
+    messageType: topicName.includes('compressed') ? 'sensor_msgs/CompressedImage' : 'sensor_msgs/Image'
+  });
+  cameraSubscriber.subscribe(onCameraMessage);
+  log('Subscribed to camera topic: ' + topicName);
+});
+
+function onCameraMessage(msg) {
+  // If compressed: msg.format and msg.data (base64)
+  if (msg.format || msg.data) {
+    // sensor_msgs/CompressedImage
+    cameraImg.src = 'data:image/jpeg;base64,' + msg.data;
+  } else if (msg.data && msg.data.length) {
+    // raw Image: roslibjs gives raw array; converting is more involved.
+    // Try if msg is in JPEG string field
+    if (msg.data) cameraImg.src = 'data:image/jpeg;base64,' + msg.data;
+  } else {
+    // fallback
+  }
+}
+
+/* ---------- Battery subscription ---------- */
+function onBattery(msg) {
+  // sensor_msgs/BatteryState typically has percentage or voltage
+  let percent = null;
+  if (typeof msg.percentage === 'number') percent = (msg.percentage*100).toFixed(1) + '%';
+  else if (msg.voltage) percent = `${msg.voltage.toFixed(2)}V`;
+  else percent = JSON.stringify(msg).slice(0,40);
+  document.getElementById('battery').textContent = percent;
+}
+
+/* ---------- init UI ---------- */
+renderGoals();
+log('UI ready. Enter rosbridge ws url and press Connect.');
+</script>
+</body>
+</html>

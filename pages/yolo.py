@@ -43,6 +43,10 @@ class CameraPage(ctk.CTkFrame):
         self.yolo.change_camera(cam_id)
 
     def update_frame(self):
+        if not self.yolo.active:
+            self.preview_canvas.delete("all")
+            self.after(100, self.update_frame)
+            return
         frame = self.yolo.get_frame()
         if frame is not None:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

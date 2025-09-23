@@ -1,12 +1,11 @@
 import customtkinter as ctk
 from pages.menu_page import MenuPage
 from pages.joystick_page import JoystickPage
-from pages.ai_page import AIPage
 #from pages.map_page import MapPage
 from pages.app_config_page import AppConfigPage
 from pages.yolo import CameraPage
 from pages.yolo_bg import YoloBackground
-
+import os
 ctk.set_appearance_mode("System")
 ctk.set_default_color_theme("themes/red.json")
 
@@ -18,7 +17,10 @@ class App(ctk.CTk):
         # ทำให้ window ขยายได้
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-        self.iconbitmap("logo/cisat.ico")
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        icon_path = os.path.join(script_dir, "logo", "cisat.ico")
+        self.iconbitmap(icon_path)
+        
         
         
 
@@ -33,7 +35,7 @@ class App(ctk.CTk):
         self.yolo_bg = YoloBackground(log_func=self.log)
         
         #MapPage ยังไม่ทำ
-        for F in (MenuPage, JoystickPage, AppConfigPage , CameraPage):
+        for F in (MenuPage, JoystickPage, AppConfigPage , CameraPage ):
             if F == CameraPage:
                 frame = F(parent=self.container, controller=self, yolo_bg=self.yolo_bg)
             else:

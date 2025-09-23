@@ -1,50 +1,68 @@
-
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 from nav2_msgs.action import NavigateToPose
 from std_msgs.msg import Bool
-from yolo_bg import YoloBackground
-import threading
-import time
+from std_msgs.msg import String
+import json
+import math
 
-class YoloNav2Bridge(Node):
+class Nav2Bridge(Node):
     def __init__(self):
-        super().__init__('yolo_nav2_bridge')
-        self.get_logger().info("[Bridge] Starting YoloNav2Bridge node")
-
-        # YOLO background
-        self.yolo = YoloBackground(log_func=self.get_logger().info)
-        self.yolo.start(cam_id=0)
+        super().__init__('nav2_bridge')
+        self.get_logger().info("[Bridge] Starting Nav2Bridge node")
 
         # Nav2 action client
         self._action_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
 
-        # Subscription /goal_pose
-        self.create_subscription(PoseStamped, '/goal_pose', self.on_goal_pose, 10)
+        # ตำแหน่งปัจจุบัน
+        self.current_pose = None
+        self.create_subscription(PoseWithCovarianceStamped, '/amcl_pose', self.on_amcl_pose, 10)
 
-        # Subscription /yolo_stop
+        # Goal pose
+        self.create_subscription(PoseStamped, '/goal_pose', self.on_goal_pose, 10)
+        
+        self.create_subscription(String, '/yolo/detections', self.on_yolo_detection, 10)
+
+
+        # Stop flag
         self.stop_flag = False
         self.create_subscription(Bool, '/yolo_stop', self.on_yolo_stop, 10)
 
-        # Thread for YOLO monitoring
-        threading.Thread(target=self.monitor_yolo, daemon=True).start()
-
         self.get_logger().info("[Bridge] Node initialized")
+
+    def on_amcl_pose(self, msg: PoseWithCovarianceStamped):
+        self.current_pose = msg.pose.pose
 
     def on_goal_pose(self, msg: PoseStamped):
         if self.stop_flag:
-            self.get_logger().warn("[Bridge] Cannot send goal, YOLO stop active")
+            self.get_logger().warn("[Bridge] Cannot send goal, stop flag active")
             return
 
-        self.get_logger().info(f"[Bridge] Received goal: ({msg.pose.position.x:.2f}, {msg.pose.position.y:.2f})")
-        if not self._action_client.wait_for_server(timeout_sec=5.0):
+        x_goal = msg.pose.position.x
+        y_goal = msg.pose.position.y
+
+        if self.current_pose:
+            x_curr = self.current_pose.position.x
+            y_curr = self.current_pose.position.y
+            distance = math.sqrt((x_goal - x_curr)**2 + (y_goal - y_curr)**2)
+            self.get_logger().info(
+                f"[Bridge] Goal received: (x={x_goal:.2f}, y={y_goal:.2f}) "
+                f"Current: (x={x_curr:.2f}, y={y_curr:.2f}) "
+                f"Distance: {distance:.2f} m"
+            )
+        else:
+            self.get_logger().warn("[Bridge] Current pose not available yet, cannot compute distance")
+            distance = None
+
+        if not self._action_client.wait_for_server(timeout_sec=10):
             self.get_logger().error("[Bridge] NavigateToPose action server not available")
             return
 
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose = msg
+
         send_goal_future = self._action_client.send_goal_async(goal_msg, feedback_callback=self.feedback_cb)
         send_goal_future.add_done_callback(self.goal_response_cb)
 
@@ -60,36 +78,56 @@ class YoloNav2Bridge(Node):
 
     def feedback_cb(self, feedback_msg):
         feedback = feedback_msg.feedback
-        self.get_logger().info(f"[Bridge] Remaining: {getattr(feedback, 'distance_remaining', '?'):.2f}")
+        self.get_logger().info(
+            f"[Bridge] Remaining: {getattr(feedback, 'distance_remaining', float('nan')):.2f} m"
+        )
 
     def get_result_cb(self, future):
         result = future.result().result
         status = future.result().status
         if status == 4:
             self.get_logger().info("[Bridge] Navigation succeeded")
+        elif status == 6:
+            self.get_logger().info("[Bridge] Navigation CANCELED")
         else:
             self.get_logger().info(f"[Bridge] Navigation finished with status {status}")
+        self.get_logger().info(f"Result : {result}")
+        
+    def on_yolo_detection(self, msg: String):
+        """
+        msg.data = JSON list of objects with relative x,y from robot
+        """
+        try:
+            det_list = json.loads(msg.data)
+        except json.JSONDecodeError:
+            self.get_logger().error("[Bridge] Cannot decode YOLO detection")
+            return
+
+        stop = False
+        for det in det_list:
+            x = det.get('x', 100)  # fallback far away
+            y = det.get('y', 100)
+            distance = math.sqrt(x**2 + y**2)
+            if distance <= 5.0:
+                stop = True
+                self.get_logger().warn(f"[Bridge] Object '{det.get('name')}' detected at {distance:.2f} m, stopping")
+                break
+
+        # Update stop flag
+        self.stop_flag = stop
+        if self.stop_flag and hasattr(self, "_current_goal_handle"):
+            self.get_logger().warn("[Bridge] Stop flag active, canceling current goal")
+            self._current_goal_handle.cancel_goal_async()
 
     def on_yolo_stop(self, msg: Bool):
         self.stop_flag = msg.data
         if self.stop_flag and hasattr(self, "_current_goal_handle"):
-            self.get_logger().warn("[Bridge] YOLO stop active, canceling current goal")
+            self.get_logger().warn("[Bridge] Stop flag active, canceling current goal")
             self._current_goal_handle.cancel_goal_async()
-
-    def monitor_yolo(self):
-        """Loop to check YOLO detections"""
-        rate = 5  # Hz
-        while rclpy.ok():
-            nearby = self.yolo.detect_nearby_objects(distance_threshold=5.0)
-            stop_msg = Bool()
-            stop_msg.data = len(nearby) > 0
-            self.get_logger().info(f"[YOLO] Nearby objects: {len(nearby)} -> Stop: {stop_msg.data}")
-            self.on_yolo_stop(stop_msg)
-            time.sleep(1/rate)
 
 def main(args=None):
     rclpy.init(args=args)
-    node = YoloNav2Bridge()
+    node = Nav2Bridge()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

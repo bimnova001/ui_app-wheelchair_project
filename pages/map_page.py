@@ -1,5 +1,6 @@
 # map_page.py
 import customtkinter as ctk
+from customtkinter import CTkInputDialog
 from PIL import Image, ImageTk
 import os, json, threading, yaml
 import rclpy
@@ -9,7 +10,7 @@ from tkinter import messagebox
 
 POINTS_FILE = "assets/points.json"
 
-class ROS2GoalPublisher(Node):
+class ROS2GoalPublisher(Node):  
     def __init__(self):
         super().__init__('goal_publisher')
         self.publisher = self.create_publisher(PoseStamped, '/goal_pose', 10)
@@ -107,21 +108,42 @@ class MapPage(ctk.CTkFrame):
     def add_point(self, event):
         x, y = event.x, event.y
         map_x, map_y = self.pixel_to_map(x, y)
-        self.points.append({'x': x, 'y': y, 'map_x': map_x, 'map_y': map_y, 'name': f"Point {len(self.points)+1}"})
+
+        # ถามชื่อ point
+        dialog = CTkInputDialog(text="กรุณาตั้งชื่อ Point:", title="Add Point")
+        name = dialog.get_input()
+        if not name:  # ถ้า user กด cancel หรือไม่ใส่ชื่อ
+            return
+
+        self.points.append({
+            'x': x, 'y': y,
+            'map_x': map_x, 'map_y': map_y,
+            'name': name
+        })
         self.canvas.create_oval(x-6, y-6, x+6, y+6, fill="red")
         self.refresh_buttons()
         self.save_points()
 
+
     def refresh_buttons(self):
         for widget in self.buttons_frame.winfo_children():
             widget.destroy()
+
         for i, p in enumerate(self.points):
             name = p.get('name', f"Point {i+1}")
-            btn = ctk.CTkButton(self.buttons_frame, text=name, command=lambda idx=i: self.go_to_point(idx))
-            btn.pack(pady=4, fill="x")
-            # add delete button
-            del_btn = ctk.CTkButton(self.buttons_frame, text="✕", width=20, command=lambda idx=i: self.delete_point(idx))
-            del_btn.place(x=450, y=4 + i*34)  # adjust y according to packing
+
+            row = ctk.CTkFrame(self.buttons_frame, fg_color="transparent")
+            row.pack(pady=2, fill="x")
+
+            # ปุ่มไปยังจุด
+            btn = ctk.CTkButton(row, text=name, command=lambda idx=i: self.go_to_point(idx))
+            btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+            # ปุ่มลบ
+            del_btn = ctk.CTkButton(row, text="✕", width=30, fg_color="#b71c1c",
+                                    command=lambda idx=i: self.delete_point(idx))
+            del_btn.pack(side="right")
+
 
     def delete_point(self, index):
         self.points.pop(index)
