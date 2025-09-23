@@ -13,6 +13,7 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Robot Control System")
+        self.attributes("-fullscreen", True)
 
         # ทำให้ window ขยายได้
         self.grid_rowconfigure(0, weight=1)

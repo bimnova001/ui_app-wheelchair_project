@@ -9,19 +9,59 @@
   <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
   <!-- nipplejs for joystick -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
+  <style>
+    body { background: linear-gradient(135deg, #18191c 0%, #232323 100%); color: #f2f2f2; font-family: 'Segoe UI', Arial, sans-serif; margin: 0; }
+    #topbar { background: #b71c1c; padding: 24px 0 16px 0; text-align: center; box-shadow: 0 4px 16px #0008; }
+    #topbar label { font-weight: 500; }
+    #topbar input { padding: 4px 6px; border-radius: 4px; border: 1px solid #333; background:#222; color:#fff; }
+    #topbar button { padding: 6px 12px; border:none; border-radius:6px; background:#2a2a50; color:#fff; cursor:pointer; transition: 0.2s; }
+    #topbar button:hover { background:#3a3a80; }
+    .status { display:inline-block; margin-left:16px; padding:4px 14px; border-radius:8px; font-weight:600; }
+    .status.connected { background:#0b3d3d; color:#bff; }
+    .status.disconnected { background:#3d0b0b; color:#fdd; }
+    .status.error { background:#440000; color:#f99; }
+    #container { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; margin: 32px auto 0 auto; max-width: 1400px; }
+    #left-panel, #center-panel, #right-panel { background: #232323e6; border-radius: 18px; box-shadow: 0 8px 32px #0007; padding: 24px 18px 18px 18px; min-width: 260px; }
+    #left-panel { flex: 1 1 280px; max-width: 320px; }
+    #center-panel { flex: 2 1 640px; max-width: 700px; align-items: center; }
+    #right-panel { flex: 1 1 320px; max-width: 360px; }
+    h3 { color: #ff5252; margin-top: 12px; font-size: 1.2rem; font-weight: 600; }
+    #joystick-area { width: 180px; height: 180px; margin: 0 auto 12px auto; }
+    #controls label { display:block; margin: 8px 0 4px 0; }
+    #controls input { width: 80px; }
+    #controls button { padding: 6px 12px; border-radius:6px; border:none; background:#2a1a1a; color:#fff; cursor:pointer; transition:0.2s; }
+    #controls button:hover { background:#3a2a2a; transform: scale(1.05); }
+    #map-canvas { border: 2px solid #444; border-radius: 12px; background: #111; margin: 8px 0 8px 0; box-shadow: 0 2px 8px #0008; }
+    #goals-list button { margin: 2px 2px 2px 0; padding: 4px 10px; border-radius: 6px; border: none; background: #2a2a50; color: #fff; cursor: pointer; transition: background 0.2s, transform 0.2s; }
+    #goals-list button:hover { background: #3a3a80; transform: scale(1.04); }
+    #goals-list .del-btn { background: #b71c1c; color: #fff; margin-left: 6px; }
+    #goals-list .del-btn:hover { background: #ff5252; }
+    #camera-img { width: 100%; max-width: 640px; height: 360px; background:#000; border-radius: 10px; margin-bottom: 8px; }
+    #log { height:200px; overflow:auto; background:#111; color:#0f0; padding:8px; border-radius: 8px; }
+    @media (max-width: 1100px) { #container { flex-direction: column; align-items: stretch; } }
+    @media (max-width: 700px) { #left-panel, #center-panel, #right-panel { min-width: unset; max-width: unset; padding: 12px 4vw; } #map-canvas { width: 98vw; height: 60vw; } }
+    .goal-anim { animation: goalFlash 0.7s; }
+    @keyframes goalFlash { 0%{box-shadow:0 0 0 #fff;} 50%{box-shadow:0 0 24px #ff0;} 100%{box-shadow:0 0 0 #fff;} }
+  </style>
 </head>
 <body>
   <div id="topbar">
     <label>ROS Bridge WebSocket URL: </label>
-    <input id="ros-url" type="text" value="ws://192.168.1.100:9090" style="width:280px"/>
+    <input id="ros-url" type="text" value="ws://localhost:9090" style="width:280px"/>
     <button id="connect-btn">Connect</button>
     <span id="ros-status" class="status disconnected">Disconnected</span>
   </div>
 
   <div id="container">
     <div id="left-panel">
-      <h3>Joystick</h3>
-      <div id="joystick-area"></div>
+      <h3 class="panel-title">Joystick</h3>
+      <div id="joystick-area-wrapper">
+        <div id="joystick-area"></div>
+        <div id="joy-values">
+          <span id="joy-lin">Linear: 0.00</span>
+          <span id="joy-ang">Angular: 0.00</span>
+        </div>
+      </div>
       <div id="controls">
         <label>Max Linear m/s: <input id="max-linear" type="number" value="0.20" step="0.01"/></label>
         <label>Max Angular rad/s: <input id="max-angular" type="number" value="0.7" step="0.01"/></label>
@@ -34,6 +74,8 @@
       <h3>Saved Goals</h3>
       <div id="goals-list">No goals yet</div>
       <button id="clear-goals">Clear saved goals</button>
+      <button id="save-goals">Save goals</button>
+      <button id="load-goals">Load goals</button>
     </div>
 
     <div id="center-panel">
@@ -44,7 +86,7 @@
 
     <div id="right-panel">
       <h3>Camera</h3>
-      <img id="camera-img" alt="camera" style="width:640px; height:360px; background:#000;"/>
+      <img id="camera-img" alt="camera"/>
       <div>
         <label>Camera topic:
           <input id="camera-topic" type="text" value="/camera/image/compressed"/>
@@ -53,7 +95,7 @@
       </div>
 
       <h3>Status Log</h3>
-      <pre id="log" style="height:200px; overflow:auto; background:#111; color:#0f0; padding:8px;"></pre>
+      <pre id="log"></pre>
     </div>
   </div>
 
@@ -74,7 +116,7 @@ const rosUrlInput = document.getElementById('ros-url');
 
 function log(msg) {
   console.log(msg);
-  logEl.textContent += msg + '\\n';
+  logEl.textContent += msg + '\n';
   logEl.scrollTop = logEl.scrollHeight;
 }
 
@@ -159,7 +201,6 @@ manager.on('move', (evt, data) => {
   if (!data || !data.vector) return;
   joystickVector.x = data.vector.x; // horizontal (-1..1)
   joystickVector.y = data.vector.y; // vertical (-1..1), up negative?
-  // nipplejs vector y: -1 is up, +1 is down. We'll map up -> positive linear.
 });
 manager.on('end', () => {
   joystickVector.x = 0;
@@ -176,17 +217,19 @@ function publishTwist(linear, angular) {
   cmdVelTopic.publish(twist);
 }
 
+function updateJoyValues(lin, ang) {
+  document.getElementById('joy-lin').textContent = `Linear: ${lin.toFixed(2)}`;
+  document.getElementById('joy-ang').textContent = `Angular: ${ang.toFixed(2)}`;
+}
 setInterval(()=>{
-  // map joystick vector to twist
   const maxLinear = parseFloat(maxLinearInput.value) || 0.2;
   const maxAngular = parseFloat(maxAngularInput.value) || 0.7;
-  // use -y for forward since nipple y is -1 up
   const linear = (-joystickVector.y) * maxLinear;
   const angular = (-joystickVector.x) * maxAngular;
-  // small deadzone
   const lin = Math.abs(linear) < 0.02 ? 0 : linear;
   const ang = Math.abs(angular) < 0.02 ? 0 : angular;
   publishTwist(lin, ang);
+  updateJoyValues(lin, ang);
 }, 80);
 
 stopBtn.addEventListener('click', () => {
@@ -200,43 +243,36 @@ let lastMap = null;
 
 function onMap(msg) {
   try {
-    // msg: nav_msgs/OccupancyGrid
     const width = msg.info.width;
     const height = msg.info.height;
     const resolution = msg.info.resolution;
-    const origin = msg.info.origin; // pose
-    const data = msg.data; // array of int8
+    const origin = msg.info.origin;
+    const data = msg.data;
 
-    // store for coordinate conversion later
     lastMap = {width, height, resolution, origin, data};
 
-    // draw to canvas scaled to canvas size
     const canvasW = mapCanvas.width;
     const canvasH = mapCanvas.height;
     const sx = canvasW / width;
     const sy = canvasH / height;
 
-    // create ImageData
     const imageData = mapCtx.createImageData(width, height);
     for (let i=0;i<width*height;i++){
       const v = data[i];
-      let color = 127; // unknown grey
+      let color = 127;
       if (v === -1) color = 127;
-      else if (v >= 50) color = 0; // occupied -> black
-      else color = 255; // free -> white
-
+      else if (v >= 50) color = 0;
+      else color = 255;
       imageData.data[i*4+0] = color;
       imageData.data[i*4+1] = color;
       imageData.data[i*4+2] = color;
       imageData.data[i*4+3] = 255;
     }
-    // put on temporary canvas to scale cleanly
     const tmp = document.createElement('canvas');
     tmp.width = width;
     tmp.height = height;
     tmp.getContext('2d').putImageData(imageData,0,0);
 
-    // draw scaled
     mapCtx.clearRect(0,0,canvasW,canvasH);
     mapCtx.drawImage(tmp, 0,0, canvasW, canvasH);
 
@@ -248,26 +284,18 @@ function onMap(msg) {
   }
 }
 
-// click on canvas -> create PoseStamped (map coords) and publish to /goal_pose
 mapCanvas.addEventListener('click', (ev)=>{
   if (!lastMap || !ros || !goalTopic) {
     log('Map not available or not connected.');
     return;
   }
-  // compute pixel in map coords
   const rect = mapCanvas.getBoundingClientRect();
   const xcanvas = ev.clientX - rect.left;
   const ycanvas = ev.clientY - rect.top;
-
-  // map pixel index
   const mx_px = Math.floor((xcanvas / mapCanvas.width) * lastMap.width);
-  const my_px = Math.floor(((mapCanvas.height - ycanvas) / mapCanvas.height) * lastMap.height); // y flip
-
-  // convert to map meters:
+  const my_px = Math.floor(((mapCanvas.height - ycanvas) / mapCanvas.height) * lastMap.height);
   const map_x = lastMap.origin.position.x + mx_px * lastMap.resolution;
   const map_y = lastMap.origin.position.y + my_px * lastMap.resolution;
-
-  // Create PoseStamped
   const poseMsg = new ROSLIB.Message({
     header: { frame_id: "map" },
     pose: {
@@ -277,13 +305,17 @@ mapCanvas.addEventListener('click', (ev)=>{
   });
   goalTopic.publish(poseMsg);
   log(`Published goal_pose: x=${map_x.toFixed(2)}, y=${map_y.toFixed(2)}`);
-  // save to goals list
   addGoal({name: `Goal ${Date.now()}`, map_x, map_y});
+  // Animation
+  mapCanvas.classList.add('goal-anim');
+  setTimeout(()=>mapCanvas.classList.remove('goal-anim'), 700);
 });
 
 /* ---------- Goals list UI ---------- */
 const goalsList = document.getElementById('goals-list');
 const clearGoalsBtn = document.getElementById('clear-goals');
+const saveGoalsBtn = document.getElementById('save-goals');
+const loadGoalsBtn = document.getElementById('load-goals');
 let savedGoals = [];
 
 function addGoal(g) {
@@ -301,7 +333,6 @@ function renderGoals(){
     const btn = document.createElement('button');
     btn.textContent = `${g.name} (${g.map_x.toFixed(2)},${g.map_y.toFixed(2)})`;
     btn.onclick = ()=>{
-      // publish goal
       const poseMsg = new ROSLIB.Message({
         header: { frame_id: "map" },
         pose: {
@@ -311,11 +342,13 @@ function renderGoals(){
       });
       if (goalTopic) goalTopic.publish(poseMsg);
       log(`Sent saved goal: x=${g.map_x.toFixed(2)}, y=${g.map_y.toFixed(2)}`);
+      mapCanvas.classList.add('goal-anim');
+      setTimeout(()=>mapCanvas.classList.remove('goal-anim'), 700);
     };
     goalsList.appendChild(btn);
     const del = document.createElement('button');
     del.textContent = '✕';
-    del.style.marginLeft = '6px';
+    del.className = 'del-btn';
     del.onclick = ()=>{
       savedGoals.splice(idx,1);
       renderGoals();
@@ -330,6 +363,22 @@ clearGoalsBtn.addEventListener('click', ()=>{
   renderGoals();
 });
 
+function saveGoalsToLocal() {
+  localStorage.setItem('ros2_goals', JSON.stringify(savedGoals));
+  log('Goals saved to localStorage.');
+}
+function loadGoalsFromLocal() {
+  const data = localStorage.getItem('ros2_goals');
+  if (data) {
+    savedGoals = JSON.parse(data);
+    renderGoals();
+    log('Goals loaded from localStorage.');
+  }
+}
+
+saveGoalsBtn.addEventListener('click', saveGoalsToLocal);
+loadGoalsBtn.addEventListener('click', loadGoalsFromLocal);
+
 /* ---------- Camera subscription ---------- */
 const cameraImg = document.getElementById('camera-img');
 const cameraTopicInput = document.getElementById('camera-topic');
@@ -341,7 +390,6 @@ subscribeCameraBtn.addEventListener('click', ()=>{
   const topicName = cameraTopicInput.value.trim();
   if (!topicName) return;
   if (cameraSubscriber) cameraSubscriber.unsubscribe();
-  // try compressed image first
   cameraSubscriber = new ROSLIB.Topic({
     ros,
     name: topicName,
@@ -352,22 +400,15 @@ subscribeCameraBtn.addEventListener('click', ()=>{
 });
 
 function onCameraMessage(msg) {
-  // If compressed: msg.format and msg.data (base64)
   if (msg.format || msg.data) {
-    // sensor_msgs/CompressedImage
     cameraImg.src = 'data:image/jpeg;base64,' + msg.data;
   } else if (msg.data && msg.data.length) {
-    // raw Image: roslibjs gives raw array; converting is more involved.
-    // Try if msg is in JPEG string field
     if (msg.data) cameraImg.src = 'data:image/jpeg;base64,' + msg.data;
-  } else {
-    // fallback
   }
 }
 
 /* ---------- Battery subscription ---------- */
 function onBattery(msg) {
-  // sensor_msgs/BatteryState typically has percentage or voltage
   let percent = null;
   if (typeof msg.percentage === 'number') percent = (msg.percentage*100).toFixed(1) + '%';
   else if (msg.voltage) percent = `${msg.voltage.toFixed(2)}V`;

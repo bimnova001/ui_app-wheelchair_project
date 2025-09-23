@@ -30,6 +30,8 @@ class MenuPage(ctk.CTkFrame):
             {"name": "Start robot", "cmd": ["ros2", "launch", "turtlebot3_bringup", "robot.launch.py"]},
             {"name": "Start SLAM Mapping", "cmd": ["ros2", "launch", "slam_toolbox", "online_async_launch.py", "use_sim_time:=true"]},
             {"name": "Start Nav2", "cmd": ["ros2", "launch", "nav2_bringup", "navigation_launch.py", "use_sim_time:=True"]},
+            {"name": "Start ros2 bridge", "cmd": ["ros2", "launch", "rosbridge_server ", "rosbridge_websocket_launch.xml"]}
+
             
         ]
 
