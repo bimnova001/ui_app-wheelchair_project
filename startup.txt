@@ -1,21 +1,21 @@
-sudo nano /etc/systemd/system/myapp.service
+sudo nano /etc/systemd/system/burger.service
 
 [Unit]
-Description=My Python App
+Description=Run burger robot nodes on boot
 After=network.target
 
 [Service]
-ExecStart=/home/ubuntu/myapp/app.py
-WorkingDirectory=/home/ubuntu/myapp
-StandardOutput=inherit
-StandardError=inherit
+Type=simple
+WorkingDirectory=/home/pi/ui_app-wheelchair_project
+ExecStart=/usr/bin/python3 /home/pi/ui_app-wheelchair_project/burger.py
 Restart=always
-User=ubuntu
+User=pi
 
 [Install]
 WantedBy=multi-user.target
 
 
 sudo systemctl daemon-reload
-sudo systemctl enable myapp.service
-sudo systemctl start myapp.service
+sudo systemctl enable burger.service
+sudo systemctl start burger.service
+sudo systemctl status burger.service
