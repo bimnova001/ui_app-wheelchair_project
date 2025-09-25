@@ -5,43 +5,14 @@
   <title>ROS2 Web Control</title>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <link rel="stylesheet" href="style.css">
-  <!-- roslibjs -->
   <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
-  <!-- nipplejs for joystick -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
   <style>
-    body { background: linear-gradient(135deg, #18191c 0%, #232323 100%); color: #f2f2f2; font-family: 'Segoe UI', Arial, sans-serif; margin: 0; }
-    #topbar { background: #b71c1c; padding: 24px 0 16px 0; text-align: center; box-shadow: 0 4px 16px #0008; }
-    #topbar label { font-weight: 500; }
-    #topbar input { padding: 4px 6px; border-radius: 4px; border: 1px solid #333; background:#222; color:#fff; }
-    #topbar button { padding: 6px 12px; border:none; border-radius:6px; background:#2a2a50; color:#fff; cursor:pointer; transition: 0.2s; }
-    #topbar button:hover { background:#3a3a80; }
-    .status { display:inline-block; margin-left:16px; padding:4px 14px; border-radius:8px; font-weight:600; }
-    .status.connected { background:#0b3d3d; color:#bff; }
-    .status.disconnected { background:#3d0b0b; color:#fdd; }
-    .status.error { background:#440000; color:#f99; }
-    #container { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; margin: 32px auto 0 auto; max-width: 1400px; }
-    #left-panel, #center-panel, #right-panel { background: #232323e6; border-radius: 18px; box-shadow: 0 8px 32px #0007; padding: 24px 18px 18px 18px; min-width: 260px; }
-    #left-panel { flex: 1 1 280px; max-width: 320px; }
-    #center-panel { flex: 2 1 640px; max-width: 700px; align-items: center; }
-    #right-panel { flex: 1 1 320px; max-width: 360px; }
-    h3 { color: #ff5252; margin-top: 12px; font-size: 1.2rem; font-weight: 600; }
-    #joystick-area { width: 180px; height: 180px; margin: 0 auto 12px auto; }
-    #controls label { display:block; margin: 8px 0 4px 0; }
-    #controls input { width: 80px; }
-    #controls button { padding: 6px 12px; border-radius:6px; border:none; background:#2a1a1a; color:#fff; cursor:pointer; transition:0.2s; }
-    #controls button:hover { background:#3a2a2a; transform: scale(1.05); }
-    #map-canvas { border: 2px solid #444; border-radius: 12px; background: #111; margin: 8px 0 8px 0; box-shadow: 0 2px 8px #0008; }
-    #goals-list button { margin: 2px 2px 2px 0; padding: 4px 10px; border-radius: 6px; border: none; background: #2a2a50; color: #fff; cursor: pointer; transition: background 0.2s, transform 0.2s; }
-    #goals-list button:hover { background: #3a3a80; transform: scale(1.04); }
-    #goals-list .del-btn { background: #b71c1c; color: #fff; margin-left: 6px; }
-    #goals-list .del-btn:hover { background: #ff5252; }
-    #camera-img { width: 100%; max-width: 640px; height: 360px; background:#000; border-radius: 10px; margin-bottom: 8px; }
-    #log { height:200px; overflow:auto; background:#111; color:#0f0; padding:8px; border-radius: 8px; }
-    @media (max-width: 1100px) { #container { flex-direction: column; align-items: stretch; } }
-    @media (max-width: 700px) { #left-panel, #center-panel, #right-panel { min-width: unset; max-width: unset; padding: 12px 4vw; } #map-canvas { width: 98vw; height: 60vw; } }
-    .goal-anim { animation: goalFlash 0.7s; }
-    @keyframes goalFlash { 0%{box-shadow:0 0 0 #fff;} 50%{box-shadow:0 0 24px #ff0;} 100%{box-shadow:0 0 0 #fff;} }
+    /* ...ใช้ style เดิมของคุณ... */
+    #points-list button { margin: 2px 2px 2px 0; padding: 4px 10px; border-radius: 6px; border: none; background: #2a2a50; color: #fff; cursor: pointer; }
+    #points-list button.send-btn { background: #2ca32c; }
+    #points-list button.del-btn { background: #b71c1c; color: #fff; margin-left: 6px; }
+    #points-list button.del-btn:hover { background: #ff5252; }
   </style>
 </head>
 <body>
@@ -67,19 +38,12 @@
         <label>Max Angular rad/s: <input id="max-angular" type="number" value="0.7" step="0.01"/></label>
         <button id="stop-btn">STOP</button>
       </div>
-
       <h3>Battery</h3>
       <div>Battery: <span id="battery">N/A</span></div>
-
-      <h3>Saved Goals</h3>
-      <div id="goals-list">No goals yet</div>
-      <button id="clear-goals">Clear saved goals</button>
-      <button id="save-goals">Save goals</button>
-      <button id="load-goals">Load goals</button>
     </div>
 
     <div id="center-panel">
-      <h3>Map (click to publish goal)</h3>
+      <h3>Map (click to add point)</h3>
       <canvas id="map-canvas" width="600" height="600"></canvas>
       <div id="map-info">Map: not loaded</div>
       <div style="margin:10px 0;">
@@ -87,6 +51,7 @@
         <button id="load-map-btn">Load Map</button>
         <input type="file" id="map-file-input" style="display:none"/>
       </div>
+      <h3>Saved Points</h3>
       <div id="points-list"></div>
       <div style="margin-bottom:8px;">
         <button id="save-points-btn">Save Points (JSON)</button>
@@ -104,10 +69,8 @@
         </label>
         <button id="subscribe-camera">Subscribe</button>
       </div>
-
       <h3>Status Log</h3>
       <pre id="log"></pre>
-
       <h3>Nav2 Status</h3>
       <div id="nav2-status">Nav2: N/A</div>
     </div>
@@ -134,21 +97,17 @@ const nav2Status = document.getElementById('nav2-status');
 const saveMapBtn = document.getElementById('save-map-btn');
 const loadMapBtn = document.getElementById('load-map-btn');
 const mapFileInput = document.getElementById('map-file-input');
-const pointsList = document.getElementById('points-list');
-let mapPoints = []; // [{name, map_x, map_y, px, py}]
 
-const goalsList = document.getElementById('goals-list');
-const clearGoalsBtn = document.getElementById('clear-goals');
+const pointsList = document.getElementById('points-list');
 const savePointsBtn = document.getElementById('save-points-btn');
 const loadPointsBtn = document.getElementById('load-points-btn');
 const pointsFileInput = document.getElementById('points-file-input');
 let savedPoints = [];
 
-// --- LOG LIMIT ---
+/* ---------- LOG LIMIT ---------- */
 function log(msg) {
   console.log(msg);
   logEl.textContent += msg + '\n';
-  // Limit log lines
   let lines = logEl.textContent.split('\n');
   if (lines.length > 100) lines = lines.slice(lines.length-100);
   logEl.textContent = lines.join('\n');
@@ -191,43 +150,32 @@ function disconnectRos() {
 
 /* ---------- Topics & publishers ---------- */
 function setupTopics() {
-  // cmd_vel publisher
   cmdVelTopic = new ROSLIB.Topic({
     ros, name: '/cmd_vel', messageType: 'geometry_msgs/Twist'
   });
-
-  // goal publisher (PoseStamped)
   goalTopic = new ROSLIB.Topic({
     ros, name: '/goal_pose', messageType: 'geometry_msgs/PoseStamped'
   });
-
-  // map subscriber
   mapTopic = new ROSLIB.Topic({
     ros, name: '/map', messageType: 'nav_msgs/OccupancyGrid'
   });
   mapTopic.subscribe(onMap);
-
-  // battery subscriber (try /battery_state or /battery)
   batteryTopic = new ROSLIB.Topic({
     ros, name: '/battery_state', messageType: 'sensor_msgs/BatteryState'
   });
   batteryTopic.subscribe(onBattery);
-
-  // Nav2 feedback
   nav2FeedbackTopic = new ROSLIB.Topic({
     ros,
     name: '/navigate_to_pose/_action/feedback',
     messageType: 'nav2_msgs/action/NavigateToPose_FeedbackMessage'
   });
   nav2FeedbackTopic.subscribe(onNav2Feedback);
-
   nav2ResultTopic = new ROSLIB.Topic({
     ros,
     name: '/navigate_to_pose/_action/result',
     messageType: 'nav2_msgs/action/NavigateToPose_Result'
   });
   nav2ResultTopic.subscribe(onNav2Result);
-
   log('Topics set up (cmd_vel, goal_pose, map, battery_state).');
 }
 
@@ -239,7 +187,6 @@ function onNav2Feedback(msg) {
     nav2Status.textContent = "Nav2: Moving...";
   }
 }
-
 function onNav2Result(msg) {
   if (msg && msg.result && msg.result.result == 0) {
     nav2Status.textContent = "Nav2: Goal reached!";
@@ -268,8 +215,8 @@ let joystickVector = {x:0, y:0};
 
 manager.on('move', (evt, data) => {
   if (!data || !data.vector) return;
-  joystickVector.x = data.vector.x; // horizontal (-1..1)
-  joystickVector.y = data.vector.y; // vertical (-1..1), up negative?
+  joystickVector.x = data.vector.x;
+  joystickVector.y = data.vector.y;
 });
 manager.on('end', () => {
   joystickVector.x = 0;
@@ -306,128 +253,6 @@ stopBtn.addEventListener('click', () => {
   publishTwist(0,0);
 });
 
-// --- SAVE MAP (Download yaml+pgm) ---
-saveMapBtn.onclick = function() {
-  if (!lastMap) {
-    alert("ยังไม่มีข้อมูล map");
-    return;
-  }
-  const name = prompt("ตั้งชื่อ map ที่จะ save (เช่น mymap):");
-  if (!name) return;
-
-  // 1. สร้างไฟล์ PGM (grayscale)
-  let pgm = `P2\n${lastMap.width} ${lastMap.height}\n255\n`;
-  for (let i = 0; i < lastMap.data.length; i++) {
-    let v = lastMap.data[i];
-    let val = 205; // unknown
-    if (v === 0) val = 254; // free
-    else if (v > 50) val = 0; // occupied
-    pgm += val + (i % lastMap.width === lastMap.width - 1 ? '\n' : ' ');
-  }
-  const pgmBlob = new Blob([pgm], {type: 'image/x-portable-graymap'});
-  const pgmUrl = URL.createObjectURL(pgmBlob);
-
-  // 2. สร้างไฟล์ YAML
-  const yaml =
-    `image: ${name}.pgm
-resolution: ${lastMap.resolution}
-origin: [${lastMap.origin.position.x}, ${lastMap.origin.position.y}, 0.0]
-negate: 0
-occupied_thresh: 0.65
-free_thresh: 0.196
-`;
-  const yamlBlob = new Blob([yaml], {type: 'text/yaml'});
-  const yamlUrl = URL.createObjectURL(yamlBlob);
-
-  // 3. Download ทั้งสองไฟล์
-  const a1 = document.createElement('a');
-  a1.href = pgmUrl;
-  a1.download = name + '.pgm';
-  a1.click();
-
-  const a2 = document.createElement('a');
-  a2.href = yamlUrl;
-  a2.download = name + '.yaml';
-  a2.click();
-
-  log(`ดาวน์โหลด map: ${name}.pgm และ ${name}.yaml`);
-};
-
-// --- LOAD MAP (จากไฟล์ yaml+pgm/png) ---
-loadMapBtn.onclick = function() {
-  mapFileInput.accept = ".yaml,.pgm,.png";
-  mapFileInput.click();
-};
-
-mapFileInput.onchange = function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  if (file.name.endsWith('.yaml')) {
-    const reader = new FileReader();
-    reader.onload = function(ev) {
-      try {
-        const yaml = ev.target.result;
-        const width = parseInt(yaml.match(/width:\s*(\d+)/)?.[1] || "600");
-        const height = parseInt(yaml.match(/height:\s*(\d+)/)?.[1] || "600");
-        const resolution = parseFloat(yaml.match(/resolution:\s*([\d\.]+)/)[1]);
-        const origin = yaml.match(/origin:\s*\[([^\]]+)\]/)[1].split(',').map(Number);
-        alert("โหลด yaml สำเร็จ: width="+width+" height="+height+" res="+resolution);
-        // คุณสามารถนำค่าพวกนี้ไปใช้วาด map ต่อได้
-      } catch(e) {
-        alert("โหลด yaml ไม่สำเร็จ: "+e);
-      }
-    };
-    reader.readAsText(file);
-  } else if (file.name.endsWith('.pgm') || file.name.endsWith('.png')) {
-    // แสดงภาพ map ใน canvas หรือ img
-    const url = URL.createObjectURL(file);
-    // ตัวอย่าง: สร้าง <img> ชั่วคราว
-    const img = new Image();
-    img.onload = function() {
-      mapCtx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
-      mapCtx.drawImage(img, 0,0, mapCanvas.width, mapCanvas.height);
-      log('แสดง map จากไฟล์ภาพ');
-    };
-    img.src = url;
-  }
-};
-
-// --- MAP POINTS ---
-function drawMapPoints() {
-  // ลบจุดเดิม
-  const old = document.querySelectorAll('.map-point');
-  old.forEach(e=>e.remove());
-  // วาดจุดใหม่
-  if (!lastMap) return;
-  mapPoints.forEach(pt=>{
-    const px = Math.round((pt.map_x - lastMap.origin.position.x) / lastMap.resolution * mapCanvas.width / lastMap.width);
-    const py = Math.round(mapCanvas.height - ((pt.map_y - lastMap.origin.position.y) / lastMap.resolution * mapCanvas.height / lastMap.height));
-    const dot = document.createElement('div');
-    dot.className = 'map-point';
-    dot.style.left = (mapCanvas.offsetLeft+px-7)+'px';
-    dot.style.top = (mapCanvas.offsetTop+py-7)+'px';
-    dot.title = pt.name;
-    dot.style.position = 'absolute';
-    dot.style.zIndex = 10;
-    document.body.appendChild(dot);
-  });
-  // แสดงรายชื่อจุด
-  pointsList.innerHTML = mapPoints.map((pt,i)=>`<b>${i+1}.</b> ${pt.name} <button onclick="deleteMapPoint(${i})">ลบ</button>`).join('<br>');
-}
-window.deleteMapPoint = function(idx) {
-  mapPoints.splice(idx,1);
-  drawMapPoints();
-  saveMapPoints();
-};
-function saveMapPoints() {
-  localStorage.setItem('ros2_map_points', JSON.stringify(mapPoints));
-}
-function loadMapPoints() {
-  const data = localStorage.getItem('ros2_map_points');
-  if (data) mapPoints = JSON.parse(data);
-}
-loadMapPoints();
-
 /* ---------- Map rendering ---------- */
 const mapCanvas = document.getElementById('map-canvas');
 const mapCtx = mapCanvas.getContext('2d');
@@ -445,8 +270,6 @@ function onMap(msg) {
 
     const canvasW = mapCanvas.width;
     const canvasH = mapCanvas.height;
-    const sx = canvasW / width;
-    const sy = canvasH / height;
 
     const imageData = mapCtx.createImageData(width, height);
     for (let i=0;i<width*height;i++){
@@ -476,7 +299,173 @@ function onMap(msg) {
   }
 }
 
-// --- เมื่อคลิก map ให้ตั้งชื่อจุด ---
+/* ---------- Save/Load Map ---------- */
+saveMapBtn.onclick = function() {
+  if (!lastMap) {
+    alert("ยังไม่มีข้อมูล map");
+    return;
+  }
+  const name = prompt("ตั้งชื่อ map ที่จะ save (เช่น mymap):");
+  if (!name) return;
+
+  let pgm = `P2\n${lastMap.width} ${lastMap.height}\n255\n`;
+  for (let i = 0; i < lastMap.data.length; i++) {
+    let v = lastMap.data[i];
+    let val = 205; // unknown
+    if (v === 0) val = 254; // free
+    else if (v > 50) val = 0; // occupied
+    pgm += val + (i % lastMap.width === lastMap.width - 1 ? '\n' : ' ');
+  }
+  const pgmBlob = new Blob([pgm], {type: 'image/x-portable-graymap'});
+  const pgmUrl = URL.createObjectURL(pgmBlob);
+
+  const yaml =
+    `image: ${name}.pgm
+resolution: ${lastMap.resolution}
+origin: [${lastMap.origin.position.x}, ${lastMap.origin.position.y}, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+`;
+  const yamlBlob = new Blob([yaml], {type: 'text/yaml'});
+  const yamlUrl = URL.createObjectURL(yamlBlob);
+
+  const a1 = document.createElement('a');
+  a1.href = pgmUrl;
+  a1.download = name + '.pgm';
+  a1.click();
+
+  const a2 = document.createElement('a');
+  a2.href = yamlUrl;
+  a2.download = name + '.yaml';
+  a2.click();
+
+  log(`ดาวน์โหลด map: ${name}.pgm และ ${name}.yaml`);
+};
+
+loadMapBtn.onclick = function() {
+  mapFileInput.accept = ".yaml,.pgm,.png";
+  mapFileInput.click();
+};
+mapFileInput.onchange = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.name.endsWith('.yaml')) {
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        const yaml = ev.target.result;
+        const width = parseInt(yaml.match(/width:\s*(\d+)/)?.[1] || "600");
+        const height = parseInt(yaml.match(/height:\s*(\d+)/)?.[1] || "600");
+        const resolution = parseFloat(yaml.match(/resolution:\s*([\d\.]+)/)[1]);
+        const origin = yaml.match(/origin:\s*\[([^\]]+)\]/)[1].split(',').map(Number);
+        alert("โหลด yaml สำเร็จ: width="+width+" height="+height+" res="+resolution);
+      } catch(e) {
+        alert("โหลด yaml ไม่สำเร็จ: "+e);
+      }
+    };
+    reader.readAsText(file);
+  } else if (file.name.endsWith('.pgm') || file.name.endsWith('.png')) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = function() {
+      mapCtx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+      mapCtx.drawImage(img, 0,0, mapCanvas.width, mapCanvas.height);
+      log('แสดง map จากไฟล์ภาพ');
+    };
+    img.src = url;
+  }
+};
+
+/* ---------- Saved Points (JSON) ---------- */
+function savePointsToLocal() {
+  localStorage.setItem('ros2_points', JSON.stringify(savedPoints));
+}
+function loadPointsFromLocal() {
+  const data = localStorage.getItem('ros2_points');
+  if (data) {
+    savedPoints = JSON.parse(data);
+    renderPoints();
+  }
+}
+window.addEventListener('DOMContentLoaded', loadPointsFromLocal);
+
+savePointsBtn.onclick = function() {
+  const blob = new Blob([JSON.stringify(savedPoints, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'points.json';
+  a.click();
+};
+loadPointsBtn.onclick = function() {
+  pointsFileInput.accept = ".json";
+  pointsFileInput.click();
+};
+pointsFileInput.onchange = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      savedPoints = JSON.parse(ev.target.result);
+      renderPoints();
+      savePointsToLocal();
+      log('Loaded points from file.');
+    } catch (err) {
+      alert('โหลดไฟล์ points.json ไม่สำเร็จ');
+    }
+  };
+  reader.readAsText(file);
+};
+
+function renderPoints(){
+  pointsList.innerHTML = '';
+  if (savedPoints.length === 0) {
+    pointsList.textContent = 'No points yet';
+    return;
+  }
+  savedPoints.forEach((pt, idx) => {
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.marginBottom = '2px';
+
+    const label = document.createElement('span');
+    label.textContent = `${pt.name} (${pt.map_x.toFixed(2)},${pt.map_y.toFixed(2)})`;
+    label.style.flex = '1';
+    row.appendChild(label);
+
+    const sendBtn = document.createElement('button');
+    sendBtn.textContent = 'ส่งไป Nav2';
+    sendBtn.className = 'send-btn';
+    sendBtn.onclick = ()=>{
+      const poseMsg = new ROSLIB.Message({
+        header: { frame_id: "map" },
+        pose: {
+          position: { x: pt.map_x, y: pt.map_y, z: 0.0 },
+          orientation: { x: 0, y: 0, z: 0, w: 1 }
+        }
+      });
+      if (goalTopic) goalTopic.publish(poseMsg);
+      log(`Sent point: ${pt.name} (${pt.map_x.toFixed(2)}, ${pt.map_y.toFixed(2)})`);
+    };
+    row.appendChild(sendBtn);
+
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.className = 'del-btn';
+    del.onclick = ()=>{
+      savedPoints.splice(idx,1);
+      renderPoints();
+      savePointsToLocal();
+    };
+    row.appendChild(del);
+
+    pointsList.appendChild(row);
+  });
+}
+
+/* ---------- Map click: add point ---------- */
 mapCanvas.addEventListener('click', (ev)=>{
   if (!lastMap || !ros || !goalTopic) {
     log('Map not available or not connected.');
@@ -491,71 +480,10 @@ mapCanvas.addEventListener('click', (ev)=>{
   const map_y = lastMap.origin.position.y + my_px * lastMap.resolution;
   const name = prompt("ตั้งชื่อจุดนี้:");
   if (!name) return;
-  mapPoints.push({name, map_x, map_y});
-  saveMapPoints();
-  drawMapPoints();
-  // publish goal เหมือนเดิม
-  const poseMsg = new ROSLIB.Message({
-    header: { frame_id: "map" },
-    pose: {
-      position: { x: map_x, y: map_y, z: 0.0 },
-      orientation: { x: 0, y: 0, z: 0, w: 1 }
-    }
-  });
-  goalTopic.publish(poseMsg);
-  log(`Published goal_pose: x=${map_x.toFixed(2)}, y=${map_y.toFixed(2)}`);
-  addGoal({name, map_x, map_y});
-  mapCanvas.classList.add('goal-anim');
-  setTimeout(()=>mapCanvas.classList.remove('goal-anim'), 700);
+  savedPoints.push({name, map_x, map_y});
+  savePointsToLocal();
+  renderPoints();
 });
-
-// --- วาดจุดใหม่ทุกครั้งที่ map เปลี่ยน ---
-function onMap(msg) {
-  try {
-    const width = msg.info.width;
-    const height = msg.info.height;
-    const resolution = msg.info.resolution;
-    const origin = msg.info.origin;
-    const data = msg.data;
-
-    lastMap = {width, height, resolution, origin, data};
-
-    const canvasW = mapCanvas.width;
-    const canvasH = mapCanvas.height;
-    const sx = canvasW / width;
-    const sy = canvasH / height;
-
-    const imageData = mapCtx.createImageData(width, height);
-    for (let i=0;i<width*height;i++){
-      const v = data[i];
-      let color = 127;
-      if (v === -1) color = 127;
-      else if (v >= 50) color = 0;
-      else color = 255;
-      imageData.data[i*4+0] = color;
-      imageData.data[i*4+1] = color;
-      imageData.data[i*4+2] = color;
-      imageData.data[i*4+3] = 255;
-    }
-    const tmp = document.createElement('canvas');
-    tmp.width = width;
-    tmp.height = height;
-    tmp.getContext('2d').putImageData(imageData,0,0);
-
-    mapCtx.clearRect(0,0,canvasW,canvasH);
-    mapCtx.drawImage(tmp, 0,0, canvasW, canvasH);
-
-    document.getElementById('map-info').textContent = `Map ${width}x${height}, res=${resolution.toFixed(3)} m/px`;
-    log('Received map, drawn.');
-  } catch (e) {
-    console.error(e);
-    log('Error drawing map: ' + e);
-  }
-  drawMapPoints();
-}
-
-// --- โหลดจุดเมื่อเริ่มต้น ---
-drawMapPoints();
 
 /* ---------- Camera subscription ---------- */
 const cameraImg = document.getElementById('camera-img');
@@ -596,7 +524,7 @@ function onBattery(msg) {
 }
 
 /* ---------- init UI ---------- */
-renderGoals();
+renderPoints();
 log('UI ready. Enter rosbridge ws url and press Connect.');
 </script>
 </body>
