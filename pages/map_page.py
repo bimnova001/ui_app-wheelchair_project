@@ -82,7 +82,7 @@ class MapPage(ctk.CTkFrame):
         self.buttons_frame.pack(pady=5, fill="x")
 
         ctk.CTkButton(sidebar, text="⬅ Back to Menu", command=lambda: controller.show_frame("MenuPage")).pack(side="bottom", pady=20, fill="x")
-        ctk.CTkButton(sidebar, text="Scan Map", command=self.scan_map).pack(side="bottom", pady=5, fill="x")
+        # ctk.CTkButton(sidebar, text="Scan Map", command=self.scan_map).pack(side="bottom", pady=5, fill="x")  # <--- ลบหรือคอมเมนต์
         ctk.CTkButton(sidebar, text="Save Map", command=self.save_map).pack(side="bottom", pady=5, fill="x")
 
         # ROS2 node
@@ -109,7 +109,7 @@ class MapPage(ctk.CTkFrame):
         x, y = event.x, event.y
         map_x, map_y = self.pixel_to_map(x, y)
 
-        # ถามชื่อ point
+        # ถามชื่อ point (dialog)
         dialog = CTkInputDialog(text="กรุณาตั้งชื่อ Point:", title="Add Point")
         name = dialog.get_input()
         if not name:  # ถ้า user กด cancel หรือไม่ใส่ชื่อ
@@ -124,7 +124,6 @@ class MapPage(ctk.CTkFrame):
         self.refresh_buttons()
         self.save_points()
 
-
     def refresh_buttons(self):
         for widget in self.buttons_frame.winfo_children():
             widget.destroy()
@@ -138,6 +137,11 @@ class MapPage(ctk.CTkFrame):
             # ปุ่มไปยังจุด
             btn = ctk.CTkButton(row, text=name, command=lambda idx=i: self.go_to_point(idx))
             btn.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+            # ปุ่มแก้ไขชื่อ
+            edit_btn = ctk.CTkButton(row, text="✎", width=30, fg_color="#2ca3ff",
+                                     command=lambda idx=i: self.edit_point_name(idx))
+            edit_btn.pack(side="right", padx=(0, 2))
 
             # ปุ่มลบ
             del_btn = ctk.CTkButton(row, text="✕", width=30, fg_color="#b71c1c",
