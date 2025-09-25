@@ -132,6 +132,12 @@ const mapFileInput = document.getElementById('map-file-input');
 const pointsList = document.getElementById('points-list');
 let mapPoints = []; // [{name, map_x, map_y, px, py}]
 
+const goalsList = document.getElementById('goals-list');
+const clearGoalsBtn = document.getElementById('clear-goals');
+const saveGoalsBtn = document.getElementById('save-goals');
+const loadGoalsBtn = document.getElementById('load-goals');
+let savedGoals = [];
+
 // --- LOG LIMIT ---
 function log(msg) {
   console.log(msg);
