@@ -82,6 +82,12 @@
       <h3>Map (click to publish goal)</h3>
       <canvas id="map-canvas" width="600" height="600"></canvas>
       <div id="map-info">Map: not loaded</div>
+      <div style="margin:10px 0;">
+        <button id="save-map-btn">Save Map</button>
+        <button id="load-map-btn">Load Map</button>
+        <input type="file" id="map-file-input" style="display:none"/>
+      </div>
+      <div id="points-list"></div>
     </div>
 
     <div id="right-panel">
@@ -96,6 +102,9 @@
 
       <h3>Status Log</h3>
       <pre id="log"></pre>
+
+      <h3>Nav2 Status</h3>
+      <div id="nav2-status">Nav2: N/A</div>
     </div>
   </div>
 
@@ -107,16 +116,30 @@ let mapTopic = null;
 let cameraTopic = null;
 let batteryTopic = null;
 let goalTopic = null;
+let nav2FeedbackTopic = null;
+let nav2ResultTopic = null;
 
 /* ----- UI elements ----- */
 const logEl = document.getElementById('log');
 const rosStatusEl = document.getElementById('ros-status');
 const connectBtn = document.getElementById('connect-btn');
 const rosUrlInput = document.getElementById('ros-url');
+const nav2Status = document.getElementById('nav2-status');
 
+const saveMapBtn = document.getElementById('save-map-btn');
+const loadMapBtn = document.getElementById('load-map-btn');
+const mapFileInput = document.getElementById('map-file-input');
+const pointsList = document.getElementById('points-list');
+let mapPoints = []; // [{name, map_x, map_y, px, py}]
+
+// --- LOG LIMIT ---
 function log(msg) {
   console.log(msg);
   logEl.textContent += msg + '\n';
+  // Limit log lines
+  let lines = logEl.textContent.split('\n');
+  if (lines.length > 100) lines = lines.slice(lines.length-100);
+  logEl.textContent = lines.join('\n');
   logEl.scrollTop = logEl.scrollHeight;
 }
 
@@ -178,7 +201,41 @@ function setupTopics() {
   });
   batteryTopic.subscribe(onBattery);
 
+  // Nav2 feedback
+  nav2FeedbackTopic = new ROSLIB.Topic({
+    ros,
+    name: '/goal_pose/_action/feedback',
+    messageType: 'nav2_msgs/action/NavigateToPose_FeedbackMessage'
+  });
+  nav2FeedbackTopic.subscribe(onNav2Feedback);
+
+  nav2ResultTopic = new ROSLIB.Topic({
+    ros,
+    name: '/goal_pose/_action/result',
+    messageType: 'nav2_msgs/action/NavigateToPose_Result'
+  });
+  nav2ResultTopic.subscribe(onNav2Result);
+
   log('Topics set up (cmd_vel, goal_pose, map, battery_state).');
+}
+
+function onNav2Feedback(msg) {
+  if (msg && msg.feedback && msg.feedback.current_pose) {
+    const p = msg.feedback.current_pose.pose.position;
+    nav2Status.textContent = `Nav2: Moving to goal (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`;
+  } else {
+    nav2Status.textContent = "Nav2: Moving...";
+  }
+}
+
+function onNav2Result(msg) {
+  if (msg && msg.result && msg.result.result == 0) {
+    nav2Status.textContent = "Nav2: Goal reached!";
+  } else if (msg && msg.result && msg.result.result == 2) {
+    nav2Status.textContent = "Nav2: Goal canceled.";
+  } else {
+    nav2Status.textContent = "Nav2: Navigation finished.";
+  }
 }
 
 /* ---------- Joystick (nipplejs) ---------- */
@@ -236,6 +293,90 @@ stopBtn.addEventListener('click', () => {
   publishTwist(0,0);
 });
 
+// --- SAVE MAP (nav2_map_server) ---
+saveMapBtn.onclick = function() {
+  const name = prompt("ตั้งชื่อ map ที่จะ save (เช่น mymap):");
+  if (!name) return;
+  // เรียก ros2 service ผ่าน rosbridge
+  const srv = new ROSLIB.Service({
+    ros,
+    name: '/map_saver/save_map',
+    serviceType: 'nav2_msgs/srv/SaveMap'
+  });
+  const req = new ROSLIB.ServiceRequest({
+    map_topic: "/map",
+    map_url: name
+  });
+  srv.callService(req, function(result) {
+    log("Save map: " + JSON.stringify(result));
+    alert("Save map สำเร็จ: " + name);
+  });
+};
+
+// --- LOAD MAP (จากไฟล์ yaml+pgm/png) ---
+loadMapBtn.onclick = function() {
+  mapFileInput.click();
+};
+mapFileInput.onchange = function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev) {
+    try {
+      // สมมติเป็น yaml (หา width, height, resolution, origin)
+      const yaml = ev.target.result;
+      const width = parseInt(yaml.match(/width:\s*(\d+)/)[1]);
+      const height = parseInt(yaml.match(/height:\s*(\d+)/)[1]);
+      const resolution = parseFloat(yaml.match(/resolution:\s*([\d\.]+)/)[1]);
+      const origin = yaml.match(/origin:\s*\[([^\]]+)\]/)[1].split(',').map(Number);
+      // โหลดภาพ map (pgm หรือ png)
+      const imgFile = file.name.replace('.yaml', '.png');
+      // ให้ user เลือกไฟล์ภาพเอง (หรือจะโหลดอัตโนมัติถ้ามี server)
+      alert("โหลด yaml สำเร็จ: width="+width+" height="+height+" res="+resolution);
+      // สามารถนำค่าพวกนี้ไปใช้วาด map ต่อได้
+    } catch(e) {
+      alert("โหลด yaml ไม่สำเร็จ: "+e);
+    }
+  };
+  reader.readAsText(file);
+};
+
+// --- MAP POINTS ---
+function drawMapPoints() {
+  // ลบจุดเดิม
+  const old = document.querySelectorAll('.map-point');
+  old.forEach(e=>e.remove());
+  // วาดจุดใหม่
+  if (!lastMap) return;
+  mapPoints.forEach(pt=>{
+    const px = Math.round((pt.map_x - lastMap.origin.position.x) / lastMap.resolution * mapCanvas.width / lastMap.width);
+    const py = Math.round(mapCanvas.height - ((pt.map_y - lastMap.origin.position.y) / lastMap.resolution * mapCanvas.height / lastMap.height));
+    const dot = document.createElement('div');
+    dot.className = 'map-point';
+    dot.style.left = (mapCanvas.offsetLeft+px-7)+'px';
+    dot.style.top = (mapCanvas.offsetTop+py-7)+'px';
+    dot.title = pt.name;
+    dot.style.position = 'absolute';
+    dot.style.zIndex = 10;
+    document.body.appendChild(dot);
+  });
+  // แสดงรายชื่อจุด
+  pointsList.innerHTML = mapPoints.map((pt,i)=>`<b>${i+1}.</b> ${pt.name} <button onclick="deleteMapPoint(${i})">ลบ</button>`).join('<br>');
+}
+window.deleteMapPoint = function(idx) {
+  mapPoints.splice(idx,1);
+  drawMapPoints();
+  saveMapPoints();
+};
+function saveMapPoints() {
+  localStorage.setItem('ros2_map_points', JSON.stringify(mapPoints));
+}
+function loadMapPoints() {
+  const data = localStorage.getItem('ros2_map_points');
+  if (data) mapPoints = JSON.parse(data);
+}
+loadMapPoints();
+
 /* ---------- Map rendering ---------- */
 const mapCanvas = document.getElementById('map-canvas');
 const mapCtx = mapCanvas.getContext('2d');
@@ -284,6 +425,7 @@ function onMap(msg) {
   }
 }
 
+// --- เมื่อคลิก map ให้ตั้งชื่อจุด ---
 mapCanvas.addEventListener('click', (ev)=>{
   if (!lastMap || !ros || !goalTopic) {
     log('Map not available or not connected.');
@@ -296,6 +438,12 @@ mapCanvas.addEventListener('click', (ev)=>{
   const my_px = Math.floor(((mapCanvas.height - ycanvas) / mapCanvas.height) * lastMap.height);
   const map_x = lastMap.origin.position.x + mx_px * lastMap.resolution;
   const map_y = lastMap.origin.position.y + my_px * lastMap.resolution;
+  const name = prompt("ตั้งชื่อจุดนี้:");
+  if (!name) return;
+  mapPoints.push({name, map_x, map_y});
+  saveMapPoints();
+  drawMapPoints();
+  // publish goal เหมือนเดิม
   const poseMsg = new ROSLIB.Message({
     header: { frame_id: "map" },
     pose: {
@@ -305,79 +453,58 @@ mapCanvas.addEventListener('click', (ev)=>{
   });
   goalTopic.publish(poseMsg);
   log(`Published goal_pose: x=${map_x.toFixed(2)}, y=${map_y.toFixed(2)}`);
-  addGoal({name: `Goal ${Date.now()}`, map_x, map_y});
-  // Animation
+  addGoal({name, map_x, map_y});
   mapCanvas.classList.add('goal-anim');
   setTimeout(()=>mapCanvas.classList.remove('goal-anim'), 700);
 });
 
-/* ---------- Goals list UI ---------- */
-const goalsList = document.getElementById('goals-list');
-const clearGoalsBtn = document.getElementById('clear-goals');
-const saveGoalsBtn = document.getElementById('save-goals');
-const loadGoalsBtn = document.getElementById('load-goals');
-let savedGoals = [];
+// --- วาดจุดใหม่ทุกครั้งที่ map เปลี่ยน ---
+function onMap(msg) {
+  try {
+    const width = msg.info.width;
+    const height = msg.info.height;
+    const resolution = msg.info.resolution;
+    const origin = msg.info.origin;
+    const data = msg.data;
 
-function addGoal(g) {
-  savedGoals.push(g);
-  renderGoals();
-}
+    lastMap = {width, height, resolution, origin, data};
 
-function renderGoals(){
-  goalsList.innerHTML = '';
-  if (savedGoals.length === 0) {
-    goalsList.textContent = 'No goals yet';
-    return;
+    const canvasW = mapCanvas.width;
+    const canvasH = mapCanvas.height;
+    const sx = canvasW / width;
+    const sy = canvasH / height;
+
+    const imageData = mapCtx.createImageData(width, height);
+    for (let i=0;i<width*height;i++){
+      const v = data[i];
+      let color = 127;
+      if (v === -1) color = 127;
+      else if (v >= 50) color = 0;
+      else color = 255;
+      imageData.data[i*4+0] = color;
+      imageData.data[i*4+1] = color;
+      imageData.data[i*4+2] = color;
+      imageData.data[i*4+3] = 255;
+    }
+    const tmp = document.createElement('canvas');
+    tmp.width = width;
+    tmp.height = height;
+    tmp.getContext('2d').putImageData(imageData,0,0);
+
+    mapCtx.clearRect(0,0,canvasW,canvasH);
+    mapCtx.drawImage(tmp, 0,0, canvasW, canvasH);
+
+    document.getElementById('map-info').textContent = `Map ${width}x${height}, res=${resolution.toFixed(3)} m/px`;
+    log('Received map, drawn.');
+  } catch (e) {
+    console.error(e);
+    log('Error drawing map: ' + e);
   }
-  savedGoals.forEach((g, idx) => {
-    const btn = document.createElement('button');
-    btn.textContent = `${g.name} (${g.map_x.toFixed(2)},${g.map_y.toFixed(2)})`;
-    btn.onclick = ()=>{
-      const poseMsg = new ROSLIB.Message({
-        header: { frame_id: "map" },
-        pose: {
-          position: { x: g.map_x, y: g.map_y, z: 0.0 },
-          orientation: { x: 0, y: 0, z: 0, w: 1 }
-        }
-      });
-      if (goalTopic) goalTopic.publish(poseMsg);
-      log(`Sent saved goal: x=${g.map_x.toFixed(2)}, y=${g.map_y.toFixed(2)}`);
-      mapCanvas.classList.add('goal-anim');
-      setTimeout(()=>mapCanvas.classList.remove('goal-anim'), 700);
-    };
-    goalsList.appendChild(btn);
-    const del = document.createElement('button');
-    del.textContent = '✕';
-    del.className = 'del-btn';
-    del.onclick = ()=>{
-      savedGoals.splice(idx,1);
-      renderGoals();
-    };
-    goalsList.appendChild(del);
-    goalsList.appendChild(document.createElement('br'));
-  });
+  drawMapPoints();
 }
 
-clearGoalsBtn.addEventListener('click', ()=>{
-  savedGoals = [];
-  renderGoals();
-});
-
-function saveGoalsToLocal() {
-  localStorage.setItem('ros2_goals', JSON.stringify(savedGoals));
-  log('Goals saved to localStorage.');
-}
-function loadGoalsFromLocal() {
-  const data = localStorage.getItem('ros2_goals');
-  if (data) {
-    savedGoals = JSON.parse(data);
-    renderGoals();
-    log('Goals loaded from localStorage.');
-  }
-}
-
-saveGoalsBtn.addEventListener('click', saveGoalsToLocal);
-loadGoalsBtn.addEventListener('click', loadGoalsFromLocal);
+// --- โหลดจุดเมื่อเริ่มต้น ---
+drawMapPoints();
 
 /* ---------- Camera subscription ---------- */
 const cameraImg = document.getElementById('camera-img');

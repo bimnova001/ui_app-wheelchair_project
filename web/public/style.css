@@ -172,8 +172,13 @@ pre {
   flex: 1;
 }
 
+#log { max-height:200px; overflow:auto; background:#111; color:#0f0; padding:8px; border-radius: 8px; }
+
 /* Headings */
 h3 { margin: 4px 0; font-weight: 600; }
+
+#points-list { margin: 10px 0; color: #ff0; font-size: 1rem; }
+.map-point { position:absolute; width:14px; height:14px; border-radius:50%; background:#ff0a; border:2px solid #ff0; pointer-events:none; }
 
 /* Responsive for small screens */
 @media (max-width: 1400px){
