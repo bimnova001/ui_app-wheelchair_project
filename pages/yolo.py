@@ -2,12 +2,12 @@ import customtkinter as ctk
 from PIL import Image, ImageTk
 import cv2
 import threading
+import roslibpy  # ต้องติดตั้ง roslibpy
 
 class CameraPage(ctk.CTkFrame):
-    def __init__(self, parent, controller, yolo_bg):
+    def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        self.yolo = yolo_bg
 
         # Title
         ctk.CTkLabel(self, text="Camara Ai", font=ctk.CTkFont(size=20, weight="bold")).pack(pady=10)
@@ -35,42 +35,57 @@ class CameraPage(ctk.CTkFrame):
             command=lambda: controller.show_frame("MenuPage")
         ).pack(pady=15, side="bottom")
 
-        # Start update loop
+        # เตรียมตัวแปรสำหรับภาพและ detection
+        self.frame = None
+        self.detections = []
+
+        # เริ่ม thread สำหรับ subscribe ROS2
+        self.ros = roslibpy.Ros(host='localhost', port=9090)
+        self.ros.run()
+        self.image_topic = roslibpy.Topic(self.ros, '/yolo/image/compressed', 'sensor_msgs/CompressedImage')
+        self.detection_topic = roslibpy.Topic(self.ros, '/yolo/detections', 'std_msgs/String')
+        self.image_topic.subscribe(self.on_image)
+        self.detection_topic.subscribe(self.on_detection)
+
         self.update_frame()
 
     def change_camera(self):
         cam_id = self.cam_var.get()
         self.yolo.change_camera(cam_id)
 
+    def on_image(self, msg):
+        import base64
+        import numpy as np
+        img_bytes = base64.b64decode(msg['data'])
+        np_arr = np.frombuffer(img_bytes, np.uint8)
+        self.frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+
+    def on_detection(self, msg):
+        import json
+        try:
+            self.detections = json.loads(msg['data'])
+        except Exception:
+            self.detections = []
+
     def update_frame(self):
-        if not self.yolo.active:
-            self.preview_canvas.delete("all")
-            self.after(100, self.update_frame)
-            return
-        frame = self.yolo.get_frame()
+        frame = self.frame
         if frame is not None:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(frame_rgb)
             imgtk = ImageTk.PhotoImage(image=img)
-
-            # แสดงบน canvas
             self.preview_canvas.delete("all")
             self.preview_canvas.create_image(0, 0, anchor="nw", image=imgtk)
-            self.preview_canvas.imgtk = imgtk  # ต้องเก็บ reference
+            self.preview_canvas.imgtk = imgtk
 
-            # วาด bounding box และเส้นระยะ
-            for det in self.yolo.detections:
+            # วาด bounding box
+            for det in self.detections:
                 x1, y1, x2, y2 = det["bbox"]
                 cls_id = det["cls"]
                 conf = det["conf"]
-
-                # วาดกรอบสี่เหลี่ยม
                 self.preview_canvas.create_rectangle(
                     x1, y1, x2, y2,
                     outline="red", width=2
                 )
-
-                # แสดง label + confidence
                 self.preview_canvas.create_text(
                     x1 + 5, y1 - 10,
                     text=f"ID:{cls_id} {conf:.2f}",
@@ -78,14 +93,4 @@ class CameraPage(ctk.CTkFrame):
                     fill="yellow",
                     font=("Arial", 10, "bold")
                 )
-
-                # วาดเส้นระยะ (จากกลาง frame ลงไปที่วัตถุ)
-                frame_h, frame_w, _ = frame.shape
-                cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
-                self.preview_canvas.create_line(
-                    frame_w/2, frame_h, cx, cy,
-                    fill="lime", width=2
-                )
-
-        # เรียกตัวเองซ้ำทุก 30ms
         self.after(30, self.update_frame)
