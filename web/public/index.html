@@ -88,6 +88,11 @@
         <input type="file" id="map-file-input" style="display:none"/>
       </div>
       <div id="points-list"></div>
+      <div style="margin-bottom:8px;">
+        <button id="save-points-btn">Save Points (JSON)</button>
+        <button id="load-points-btn">Load Points (JSON)</button>
+        <input type="file" id="points-file-input" style="display:none"/>
+      </div>
     </div>
 
     <div id="right-panel">
@@ -134,8 +139,9 @@ let mapPoints = []; // [{name, map_x, map_y, px, py}]
 
 const goalsList = document.getElementById('goals-list');
 const clearGoalsBtn = document.getElementById('clear-goals');
-const saveGoalsBtn = document.getElementById('save-goals');
-const loadGoalsBtn = document.getElementById('load-goals');
+const savePointsBtn = document.getElementById('save-points-btn');
+const loadPointsBtn = document.getElementById('load-points-btn');
+const pointsFileInput = document.getElementById('points-file-input');
 let savedGoals = [];
 
 // --- LOG LIMIT ---
