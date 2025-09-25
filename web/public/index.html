@@ -300,52 +300,90 @@ stopBtn.addEventListener('click', () => {
   publishTwist(0,0);
 });
 
-// --- SAVE MAP (nav2_map_server) ---
+// --- SAVE MAP (Download yaml+pgm) ---
 saveMapBtn.onclick = function() {
+  if (!lastMap) {
+    alert("ยังไม่มีข้อมูล map");
+    return;
+  }
   const name = prompt("ตั้งชื่อ map ที่จะ save (เช่น mymap):");
   if (!name) return;
-  // เรียก ros2 service ผ่าน rosbridge
-  const srv = new ROSLIB.Service({
-    ros,
-    name: '/map_saver/save_map',
-    serviceType: 'nav2_msgs/srv/SaveMap'
-  });
-  const req = new ROSLIB.ServiceRequest({
-    map_topic: "/map",
-    map_url: name
-  });
-  srv.callService(req, function(result) {
-    log("Save map: " + JSON.stringify(result));
-    alert("Save map สำเร็จ: " + name);
-  });
+
+  // 1. สร้างไฟล์ PGM (grayscale)
+  let pgm = `P2\n${lastMap.width} ${lastMap.height}\n255\n`;
+  for (let i = 0; i < lastMap.data.length; i++) {
+    let v = lastMap.data[i];
+    let val = 205; // unknown
+    if (v === 0) val = 254; // free
+    else if (v > 50) val = 0; // occupied
+    pgm += val + (i % lastMap.width === lastMap.width - 1 ? '\n' : ' ');
+  }
+  const pgmBlob = new Blob([pgm], {type: 'image/x-portable-graymap'});
+  const pgmUrl = URL.createObjectURL(pgmBlob);
+
+  // 2. สร้างไฟล์ YAML
+  const yaml =
+    `image: ${name}.pgm
+resolution: ${lastMap.resolution}
+origin: [${lastMap.origin.position.x}, ${lastMap.origin.position.y}, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+`;
+  const yamlBlob = new Blob([yaml], {type: 'text/yaml'});
+  const yamlUrl = URL.createObjectURL(yamlBlob);
+
+  // 3. Download ทั้งสองไฟล์
+  const a1 = document.createElement('a');
+  a1.href = pgmUrl;
+  a1.download = name + '.pgm';
+  a1.click();
+
+  const a2 = document.createElement('a');
+  a2.href = yamlUrl;
+  a2.download = name + '.yaml';
+  a2.click();
+
+  log(`ดาวน์โหลด map: ${name}.pgm และ ${name}.yaml`);
 };
 
 // --- LOAD MAP (จากไฟล์ yaml+pgm/png) ---
 loadMapBtn.onclick = function() {
+  mapFileInput.accept = ".yaml,.pgm,.png";
   mapFileInput.click();
 };
+
 mapFileInput.onchange = function(e) {
   const file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev) {
-    try {
-      // สมมติเป็น yaml (หา width, height, resolution, origin)
-      const yaml = ev.target.result;
-      const width = parseInt(yaml.match(/width:\s*(\d+)/)[1]);
-      const height = parseInt(yaml.match(/height:\s*(\d+)/)[1]);
-      const resolution = parseFloat(yaml.match(/resolution:\s*([\d\.]+)/)[1]);
-      const origin = yaml.match(/origin:\s*\[([^\]]+)\]/)[1].split(',').map(Number);
-      // โหลดภาพ map (pgm หรือ png)
-      const imgFile = file.name.replace('.yaml', '.png');
-      // ให้ user เลือกไฟล์ภาพเอง (หรือจะโหลดอัตโนมัติถ้ามี server)
-      alert("โหลด yaml สำเร็จ: width="+width+" height="+height+" res="+resolution);
-      // สามารถนำค่าพวกนี้ไปใช้วาด map ต่อได้
-    } catch(e) {
-      alert("โหลด yaml ไม่สำเร็จ: "+e);
-    }
-  };
-  reader.readAsText(file);
+  if (file.name.endsWith('.yaml')) {
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+      try {
+        const yaml = ev.target.result;
+        const width = parseInt(yaml.match(/width:\s*(\d+)/)?.[1] || "600");
+        const height = parseInt(yaml.match(/height:\s*(\d+)/)?.[1] || "600");
+        const resolution = parseFloat(yaml.match(/resolution:\s*([\d\.]+)/)[1]);
+        const origin = yaml.match(/origin:\s*\[([^\]]+)\]/)[1].split(',').map(Number);
+        alert("โหลด yaml สำเร็จ: width="+width+" height="+height+" res="+resolution);
+        // คุณสามารถนำค่าพวกนี้ไปใช้วาด map ต่อได้
+      } catch(e) {
+        alert("โหลด yaml ไม่สำเร็จ: "+e);
+      }
+    };
+    reader.readAsText(file);
+  } else if (file.name.endsWith('.pgm') || file.name.endsWith('.png')) {
+    // แสดงภาพ map ใน canvas หรือ img
+    const url = URL.createObjectURL(file);
+    // ตัวอย่าง: สร้าง <img> ชั่วคราว
+    const img = new Image();
+    img.onload = function() {
+      mapCtx.clearRect(0,0,mapCanvas.width,mapCanvas.height);
+      mapCtx.drawImage(img, 0,0, mapCanvas.width, mapCanvas.height);
+      log('แสดง map จากไฟล์ภาพ');
+    };
+    img.src = url;
+  }
 };
 
 // --- MAP POINTS ---
