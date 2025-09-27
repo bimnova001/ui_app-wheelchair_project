@@ -8,7 +8,6 @@
   <script src="https://cdn.jsdelivr.net/npm/roslib/build/roslib.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.9.0/nipplejs.min.js"></script>
   <style>
-    /* ...ใช้ style เดิมของคุณ... */
     #points-list button { margin: 2px 2px 2px 0; padding: 4px 10px; border-radius: 6px; border: none; background: #2a2a50; color: #fff; cursor: pointer; }
     #points-list button.send-btn { background: #2ca32c; }
     #points-list button.del-btn { background: #b71c1c; color: #fff; margin-left: 6px; }
@@ -65,7 +64,7 @@
       <img id="camera-img" alt="camera"/>
       <div>
         <label>Camera topic:
-          <input id="camera-topic" type="text" value="/camera/image/compressed"/>
+          <input id="camera-topic" type="text" value="/camera/image_raw/compressed"/>
         </label>
         <button id="subscribe-camera">Subscribe</button>
       </div>
@@ -86,8 +85,8 @@ let batteryTopic = null;
 let goalTopic = null;
 let nav2FeedbackTopic = null;
 let nav2ResultTopic = null;
+let joystickManager = null;
 
-/* ----- UI elements ----- */
 const logEl = document.getElementById('log');
 const rosStatusEl = document.getElementById('ros-status');
 const connectBtn = document.getElementById('connect-btn');
@@ -151,15 +150,18 @@ function disconnectRos() {
 
 /* ---------- Topics & publishers ---------- */
 function setupTopics() {
-  // สร้าง topics หลังจาก ros connected เสมอ
   cmdVelTopic = new ROSLIB.Topic({
     ros: ros,
     name: '/cmd_vel',
-    // สำหรับ ROS2 + ros2-web-bridge ให้ใช้รูปแบบ package/msg/Message
     messageType: 'geometry_msgs/msg/Twist'
   });
 
-  // map (ROS2)
+  goalTopic = new ROSLIB.Topic({
+    ros: ros,
+    name: '/goal_pose',
+    messageType: 'geometry_msgs/msg/PoseStamped'
+  });
+
   mapTopic = new ROSLIB.Topic({
     ros: ros,
     name: '/map',
@@ -167,7 +169,6 @@ function setupTopics() {
   });
   mapTopic.subscribe(onMap);
 
-  // battery (ROS2)
   batteryTopic = new ROSLIB.Topic({
     ros: ros,
     name: '/battery_state',
@@ -175,7 +176,6 @@ function setupTopics() {
   });
   batteryTopic.subscribe(onBattery);
 
-  // Nav2 feedback/result (ROS2 action topics from ros2-web-bridge)
   nav2FeedbackTopic = new ROSLIB.Topic({
     ros: ros,
     name: '/navigate_to_pose/_action/feedback',
@@ -212,31 +212,44 @@ function onNav2Result(msg) {
 }
 
 /* ---------- Joystick (nipplejs) ---------- */
-const joystickArea = document.getElementById('joystick-area');
-const maxLinearInput = document.getElementById('max-linear');
-const maxAngularInput = document.getElementById('max-angular');
-const stopBtn = document.getElementById('stop-btn');
+function initJoystick() {
+  // Destroy previous manager if exists
+  if (window.joystickManager && window.joystickManager.destroy) {
+    window.joystickManager.destroy();
+  }
+  const zone = document.getElementById('joystick-area');
+  if (!zone) return;
+  window.joystickManager = nipplejs.create({
+    zone: zone,
+    mode: 'static',
+    position: { left: '50%', top: '50%' },
+    color: 'lightblue',
+    size: 180
+  });
 
-const manager = nipplejs.create({
-  zone: joystickArea,
-  mode: 'static',
-  position: {left: '50%', top: '50%'},
-  color: 'lightblue',
-  size: 180
-});
+  let joystickVector = { x: 0, y: 0 };
 
-let joystickVector = {x:0, y:0};
+  window.joystickManager.on('move', (evt, data) => {
+    if (!data || !data.vector) return;
+    joystickVector.x = data.vector.x;
+    joystickVector.y = data.vector.y;
+  });
+  window.joystickManager.on('end', () => {
+    joystickVector.x = 0; joystickVector.y = 0;
+    publishTwist(0, 0); // stop
+  });
 
-manager.on('move', (evt, data) => {
-  if (!data || !data.vector) return;
-  joystickVector.x = data.vector.x;
-  joystickVector.y = data.vector.y;
-});
-manager.on('end', () => {
-  joystickVector.x = 0;
-  joystickVector.y = 0;
-  publishTwist(0,0);
-});
+  setInterval(() => {
+    const maxLinear = parseFloat(document.getElementById('max-linear').value) || 0.2;
+    const maxAngular = parseFloat(document.getElementById('max-angular').value) || 0.7;
+    const linear = (-joystickVector.y) * maxLinear;
+    const angular = (-joystickVector.x) * maxAngular;
+    const lin = Math.abs(linear) < 0.02 ? 0 : linear;
+    const ang = Math.abs(angular) < 0.02 ? 0 : angular;
+    publishTwist(lin, ang);
+    updateJoyValues(lin, ang);
+  }, 80);
+}
 
 function publishTwist(linear, angular) {
   if (!ros || !cmdVelTopic) return;
@@ -252,16 +265,6 @@ function updateJoyValues(lin, ang) {
   document.getElementById('joy-lin').textContent = `Linear: ${lin.toFixed(2)}`;
   document.getElementById('joy-ang').textContent = `Angular: ${ang.toFixed(2)}`;
 }
-setInterval(()=>{
-  const maxLinear = parseFloat(maxLinearInput.value) || 0.2;
-  const maxAngular = parseFloat(maxAngularInput.value) || 0.7;
-  const linear = (-joystickVector.y) * maxLinear;
-  const angular = (-joystickVector.x) * maxAngular;
-  const lin = Math.abs(linear) < 0.02 ? 0 : linear;
-  const ang = Math.abs(angular) < 0.02 ? 0 : angular;
-  publishTwist(lin, ang);
-  updateJoyValues(lin, ang);
-}, 80);
 
 stopBtn.addEventListener('click', () => {
   publishTwist(0,0);
@@ -513,7 +516,7 @@ subscribeCameraBtn.addEventListener('click', ()=>{
   cameraSubscriber = new ROSLIB.Topic({
     ros,
     name: topicName,
-    messageType: topicName.includes('compressed') ? 'sensor_msgs/CompressedImage' : 'sensor_msgs/Image'
+    messageType: topicName.includes('compressed') ? 'sensor_msgs/msg/CompressedImage' : 'sensor_msgs/msg/Image'
   });
   cameraSubscriber.subscribe(onCameraMessage);
   log('Subscribed to camera topic: ' + topicName);
@@ -524,49 +527,6 @@ function onCameraMessage(msg) {
     cameraImg.src = 'data:image/jpeg;base64,' + msg.data;
   }
 }
-
-function initJoystick() {
-  // ถ้า element ยังไม่มีขนาด ควรรอ DOM load หรือ setTimeout สั้น ๆ ก่อนสร้าง
-  const zone = document.getElementById('joystick-area');
-  // Defensive: ถ้า zone ขนาด 0 ให้รอ 200ms แล้วลองอีกที
-  if (zone.clientWidth === 0 || zone.clientHeight === 0) {
-    setTimeout(initJoystick, 200);
-    return;
-  }
-
-  const manager = nipplejs.create({
-    zone: zone,
-    mode: 'static',
-    position: { left: '50%', top: '50%' }, // acceptable
-    size: 180
-  });
-
-  let joystickVector = { x: 0, y: 0 };
-
-  manager.on('move', (evt, data) => {
-    if (!data || !data.vector) return;
-    joystickVector.x = data.vector.x;
-    joystickVector.y = data.vector.y;
-  });
-  manager.on('end', () => {
-    joystickVector.x = 0; joystickVector.y = 0;
-    publishTwist(0, 0); // stop
-  });
-
-  // publish loop (throttle)
-  setInterval(() => {
-    const maxLinear = parseFloat(document.getElementById('max-linear').value) || 0.2;
-    const maxAngular = parseFloat(document.getElementById('max-angular').value) || 0.7;
-    const linear = (-joystickVector.y) * maxLinear;
-    const angular = (-joystickVector.x) * maxAngular;
-    // small deadzone
-    const lin = Math.abs(linear) < 0.02 ? 0 : linear;
-    const ang = Math.abs(angular) < 0.02 ? 0 : angular;
-    publishTwist(lin, ang);
-    updateJoyValues(lin, ang);
-  }, 80);
-}
-
 
 /* ---------- Battery subscription ---------- */
 function onBattery(msg) {
